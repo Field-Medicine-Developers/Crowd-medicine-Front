@@ -1,0 +1,8 @@
+languagePlaceholder: 'اختر اللغة', 
+totalRegistrations: "إجمالي التسجيلات",
+acceptedRegistrations: "التسجيلات المقبولة",
+totalCountries: "عدد الدول",
+registrationsByConference: "التسجيلات حسب المؤتمر",
+registrationsByCountry: "التسجيلات حسب الدولة",
+registrations: "التسجيلات",
+errorFetchingStatistics: "حدث خطأ أثناء جلب الإحصائيات", 

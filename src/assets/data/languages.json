@@ -1,0 +1,109 @@
+{
+  "languages": [
+    {
+      "code": "ar",
+      "name": "العربية",
+      "name_en": "Arabic"
+    },
+    {
+      "code": "en",
+      "name": "English",
+      "name_en": "English"
+    },
+    {
+      "code": "fr",
+      "name": "Français",
+      "name_en": "French"
+    },
+    {
+      "code": "fa",
+      "name": "فارسی",
+      "name_en": "Persian"
+    },
+    {
+      "code": "ur",
+      "name": "اردو",
+      "name_en": "Urdu"
+    },
+    {
+      "code": "es",
+      "name": "Español",
+      "name_en": "Spanish"
+    },
+    {
+      "code": "de",
+      "name": "Deutsch",
+      "name_en": "German"
+    },
+    {
+      "code": "it",
+      "name": "Italiano",
+      "name_en": "Italian"
+    },
+    {
+      "code": "pt",
+      "name": "Português",
+      "name_en": "Portuguese"
+    },
+    {
+      "code": "ru",
+      "name": "Русский",
+      "name_en": "Russian"
+    },
+    {
+      "code": "zh",
+      "name": "中文",
+      "name_en": "Chinese"
+    },
+    {
+      "code": "ja",
+      "name": "日本語",
+      "name_en": "Japanese"
+    },
+    {
+      "code": "hi",
+      "name": "हिंदी",
+      "name_en": "Hindi"
+    },
+    {
+      "code": "tr",
+      "name": "Türkçe",
+      "name_en": "Turkish"
+    },
+    {
+      "code": "nl",
+      "name": "Nederlands",
+      "name_en": "Dutch"
+    },
+    {
+      "code": "pl",
+      "name": "Polski",
+      "name_en": "Polish"
+    },
+    {
+      "code": "ro",
+      "name": "Română",
+      "name_en": "Romanian"
+    },
+    {
+      "code": "sv",
+      "name": "Svenska",
+      "name_en": "Swedish"
+    },
+    {
+      "code": "da",
+      "name": "Dansk",
+      "name_en": "Danish"
+    },
+    {
+      "code": "el",
+      "name": "Ελληνικά",
+      "name_en": "Greek"
+    },
+    {
+      "code": "cs",
+      "name": "Čeština",
+      "name_en": "Czech"
+    }
+  ]
+} 
