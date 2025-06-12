@@ -18,22 +18,6 @@
       </div>
     </div>
 
-    <!-- <div class="language-selector mb-4">
-      <label for="languageSelect" class="form-label">{{
-        $t("selectLanguage")
-      }}</label>
-      <select
-        id="languageSelect"
-        v-model="$i18n.locale"
-        class="form-select w-auto"
-        @change="updateDirection"
-      >
-        <option value="ar">العربية</option>
-        <option value="en">English</option>
-        <option value="fa">فارسی</option>
-      </select>
-    </div> -->
-
     <b-card no-body class="shadow-lg">
       <b-card-header class="bg-gradient-primary text-white py-3">
         <h4 class="mb-0">
@@ -42,7 +26,6 @@
         </h4>
       </b-card-header>
       <b-card-body>
-    
         <div v-if="isSubmitted" class="text-center success-message">
           <i class="fa fa-check-circle fa-3x text-success mb-3"></i>
           <h4>{{ $t("formSubmittedSuccessfully") }}</h4>
@@ -51,7 +34,6 @@
             {{ $t("submitAnother") }}
           </b-button>
         </div>
-
 
         <b-form
           v-else
@@ -129,7 +111,6 @@
               </b-form-invalid-feedback>
             </b-form-group>
 
-            <!-- Notes -->
             <div class="col-12">
               <h5 class="section-title">{{ $t("notes") }}</h5>
             </div>
@@ -173,24 +154,58 @@
               </div>
             </div>
 
-        
             <div class="col-12">
               <div class="turnstile-section">
                 <h5 class="section-title">{{ $t("securityVerification") }}</h5>
+
+                <div v-if="$isDevelopment" class="debug-info mb-2">
+                  <small class="text-muted">
+                    Script: {{ turnstileScriptLoaded ? 'Loaded' : 'Not loaded' }} |
+                    Widget: {{ turnstileLoaded ? 'Ready' : 'Not ready' }} |
+                    Token: {{ turnstileToken ? 'Present' : 'Missing' }}
+                  </small>
+                </div>
+
                 <div class="turnstile-container">
-                  <div id="turnstile-widget"></div>
+                  <div id="turnstile-widget" class="turnstile-widget"></div>
+
+                  <div v-if="!turnstileLoaded && !turnstileError" class="text-center">
+                    <b-spinner small class="me-2"></b-spinner>
+                    <span>{{ $t("loadingVerification") }}</span>
+                  </div>
+
+                  <div v-else-if="turnstileError" class="alert alert-warning">
+                    <div class="d-flex align-items-center justify-content-between">
+                      <div>
+                        <i class="fa fa-exclamation-triangle me-2"></i>
+                        {{ turnstileError }}
+                      </div>
+                      <b-button
+                        size="sm"
+                        variant="outline-primary"
+                        @click="reloadTurnstile"
+                        :disabled="isSubmitting"
+                      >
+                        <i class="fa fa-refresh me-1"></i>
+                        {{ $t("retry") }}
+                      </b-button>
+                    </div>
+                  </div>
+
+                  <div v-else-if="turnstileToken" class="alert alert-success">
+                    <i class="fa fa-check-circle me-2"></i>
+                    {{ $t("verificationComplete") }}
+                  </div>
                 </div>
-                <div v-if="turnstileError" class="alert alert-danger mt-2">
-                  {{ turnstileError }}
-                </div>
-                <div v-if="!turnstileLoaded" class="text-center mt-2">
-                  <b-spinner small></b-spinner>
-                  {{ $t("loadingVerification") }}
+
+                <div class="mt-2">
+                  <small class="text-muted">
+                    {{ $t("turnstileHelpText") }}
+                  </small>
                 </div>
               </div>
             </div>
 
-           
             <div class="d-flex justify-content-end mt-4">
               <b-button
                 type="submit"
@@ -261,15 +276,17 @@ export default {
     return {
       isSubmitting: false,
       isSubmitted: false,
+      turnstileScriptLoaded: false,
       turnstileLoaded: false,
       turnstileToken: null,
       turnstileWidgetId: null,
       turnstileError: null,
       turnstileRetryCount: 0,
       maxRetries: 3,
+      maxFileSize: 5 * 1024 * 1024, // 5MB limit for files
       fallbackLogo:
         "https://api.int-mgm.org/images/settings/84ccf070-9a30-4559-b86c-3c6512c09764.png",
-      turnstileSiteKey: "1x00000000000000000000AA",
+      turnstileSiteKey: "0x4AAAAAABgha0gsIlInCX7u", // تأكد من أن هذا المفتاح صحيح
       form: {
         fullName: "",
         governorate: "",
@@ -337,112 +354,112 @@ export default {
       this.updateDirection();
       await this.loadTurnstileScript();
     },
-
     async loadTurnstileScript() {
       try {
         if (window.turnstile) {
+          this.turnstileScriptLoaded = true;
           this.turnstileLoaded = true;
           await this.initializeTurnstile();
           return;
         }
-
-        console.log(" Loading Turnstile script...");
+        console.log("🔄 Loading Turnstile script...");
         const script = document.createElement("script");
-        script.src = "https://challenges.cloudflare.com/turnstile/v0/api.js";
+        script.src =
+          "https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit";
         script.async = true;
         script.defer = true;
-
         const loadPromise = new Promise((resolve, reject) => {
           script.onload = () => {
-            console.log(" Turnstile script loaded successfully");
+            console.log("✅ Turnstile script loaded successfully");
+            this.turnstileScriptLoaded = true;
             this.turnstileLoaded = true;
             resolve();
           };
-          script.onerror = (error) => {
-            console.error(" Failed to load Turnstile script:", error);
+          script.onerror = () => {
+            console.error("❌ Failed to load Turnstile script");
             this.turnstileError = this.$t("turnstileScriptFailed");
-            reject(error);
+            this.toast.error(this.$t("turnstileScriptFailed"));
+            reject(new Error("Failed to load Turnstile script"));
           };
         });
-
         document.head.appendChild(script);
         await loadPromise;
-        await new Promise((resolve) => setTimeout(resolve, 500));
+        await new Promise((resolve) => setTimeout(resolve, 100));
         await this.initializeTurnstile();
       } catch (error) {
-        console.error(" Error loading Turnstile:", error);
+        console.error("❌ Error loading Turnstile:", error);
         this.turnstileError = this.$t("turnstileScriptFailed");
+        this.toast.error(this.$t("turnstileScriptFailed"));
       }
     },
-
     async initializeTurnstile() {
       try {
         if (!window.turnstile) {
           throw new Error("Turnstile not available");
         }
-
         this.cleanupTurnstile();
         const container = document.getElementById("turnstile-widget");
         if (!container) {
           throw new Error("Turnstile container not found");
         }
         container.innerHTML = "";
-
-        console.log(" Initializing Turnstile widget...");
-        const options = {
-          sitekey: this.turnstileSiteKey,
+        console.log("🔄 Initializing Turnstile widget...");
+        const siteKey = this.turnstileSiteKey.trim();
+        if (!siteKey || siteKey.length < 10) {
+          throw new Error("Invalid site key");
+        }
+        this.turnstileWidgetId = window.turnstile.render("#turnstile-widget", {
+          sitekey: siteKey,
           theme: "auto",
           size: "normal",
           language: this.getLanguageCode(),
           callback: (token) => {
-            console.log(" Turnstile token received");
+            console.log("✅ Turnstile token received:", token);
             this.turnstileToken = token;
             this.turnstileError = null;
             this.turnstileRetryCount = 0;
           },
           "error-callback": (errorCode) => {
-            console.error(" Turnstile error:", errorCode);
+            console.error("❌ Turnstile error:", errorCode);
             this.handleTurnstileError(errorCode);
           },
           "expired-callback": () => {
-            console.log(" Turnstile token expired");
+            console.log("⏰ Turnstile token expired");
             this.turnstileToken = null;
             this.turnstileError = this.$t("turnstileExpired");
+            this.toast.error(this.$t("turnstileExpired"));
             this.resetTurnstile();
           },
           "timeout-callback": () => {
-            console.log(" Turnstile timeout");
+            console.log("⏰ Turnstile timeout");
             this.turnstileToken = null;
             this.turnstileError = this.$t("turnstileTimeout");
+            this.toast.error(this.$t("turnstileTimeout"));
             this.resetTurnstile();
           },
-        };
-
-        this.turnstileWidgetId = window.turnstile.render(
-          "#turnstile-widget",
-          options
-        );
-        if (this.turnstileWidgetId) {
-          console.log(
-            " Turnstile initialized successfully with ID:",
-            this.turnstileWidgetId
-          );
-        } else {
+          "unsupported-callback": () => {
+            console.error("❌ Turnstile unsupported");
+            this.turnstileError = this.$t("turnstileUnsupported");
+            this.toast.error(this.$t("turnstileUnsupported"));
+          },
+        });
+        if (!this.turnstileWidgetId) {
           throw new Error("Failed to initialize Turnstile widget");
         }
+        console.log("✅ Turnstile initialized with ID:", this.turnstileWidgetId);
       } catch (error) {
-        console.error(" Error initializing Turnstile:", error);
+        console.error("❌ Error initializing Turnstile:", error);
         this.turnstileError = this.$t("turnstileInitFailed");
+        this.toast.error(this.$t("turnstileInitFailed"));
         if (this.turnstileRetryCount < this.maxRetries) {
           this.turnstileRetryCount++;
           console.log(
-            ` Retrying Turnstile initialization (${this.turnstileRetryCount}/${this.maxRetries})...`
+            `🔄 Retrying Turnstile initialization (${this.turnstileRetryCount}/${this.maxRetries})...`
           );
           setTimeout(() => this.initializeTurnstile(), 2000);
         }
       }
     },
-
     handleTurnstileError(errorCode) {
       this.turnstileToken = null;
       const errorMessages = {
@@ -452,68 +469,78 @@ export default {
         300010: this.$t("turnstileNetworkError"),
         300020: this.$t("turnstileGenericError"),
         300030: this.$t("turnstileTimeoutError"),
+        600010: this.$t("turnstileInternalError"),
+        600020: this.$t("turnstileInternalError"),
+        600030: this.$t("turnstileInternalError"),
       };
       const message =
         errorMessages[errorCode] ||
         this.$t("turnstileUnknownError", { code: errorCode });
       this.turnstileError = message;
-      console.error("Turnstile Error Details:", { errorCode, message });
-
-      const retryableErrors = [300010, 300020, 300030];
+      this.toast.error(message);
+      console.error("Turnstile Error Details:", {
+        errorCode,
+        message,
+        siteKey: this.turnstileSiteKey,
+        language: this.getLanguageCode(),
+      });
+      const retryableErrors = [300010, 300020, 300030, 600010, 600020];
       if (
         retryableErrors.includes(errorCode) &&
         this.turnstileRetryCount < this.maxRetries
       ) {
         this.turnstileRetryCount++;
+        console.log(
+          `🔄 Retrying after error ${errorCode} (${this.turnstileRetryCount}/${this.maxRetries})...`
+        );
         setTimeout(() => this.resetTurnstile(), 3000);
       }
     },
-
     resetTurnstile() {
       if (window.turnstile && this.turnstileWidgetId) {
         try {
           window.turnstile.reset(this.turnstileWidgetId);
-          console.log(" Turnstile widget reset");
+          console.log("🔄 Turnstile widget reset");
           this.turnstileError = null;
         } catch (error) {
-          console.error("Error resetting Turnstile:", error);
+          console.error("❌ Error resetting Turnstile:", error);
           this.reloadTurnstile();
         }
       }
     },
-
     async reloadTurnstile() {
       this.cleanupTurnstile();
       this.turnstileToken = null;
       this.turnstileError = null;
       this.turnstileRetryCount = 0;
-      await new Promise((resolve) => setTimeout(resolve, 1000));
+      await new Promise((resolve) => setTimeout(resolve, 500));
       await this.initializeTurnstile();
     },
-
     cleanupTurnstile() {
       if (window.turnstile && this.turnstileWidgetId) {
         try {
           window.turnstile.remove(this.turnstileWidgetId);
           console.log("🧹 Turnstile widget removed");
+          const container = document.getElementById("turnstile-widget");
+          if (container) {
+            container.innerHTML = "";
+          }
         } catch (error) {
-          console.log("Error removing Turnstile widget:", error);
+          console.error("❌ Error removing Turnstile widget:", error);
         }
         this.turnstileWidgetId = null;
       }
+      this.turnstileToken = null;
     },
-
     getLanguageCode() {
       const languageMap = { ar: "ar", en: "en", fa: "fa" };
       return languageMap[this.$i18n.locale] || "en";
     },
-
     updateDirection() {
       const isRTL = ["ar", "fa"].includes(this.$i18n.locale);
       document.documentElement.dir = isRTL ? "rtl" : "ltr";
       document.documentElement.lang = this.$i18n.locale;
     },
-
     updateTermsList(locale) {
       const termsKey =
         locale === "ar"
@@ -527,74 +554,83 @@ export default {
         .filter((term) => term.trim())
         .map((term) => term.replace(/^- /, ""));
     },
-
     onNationalCardFileChange(event) {
       const file = event.target.files[0];
-      if (
-        file &&
-        !["application/pdf", "image/jpeg", "image/png"].includes(file.type)
-      ) {
-        this.formErrors.nationalCardFile = this.$t("invalidFileExtension");
-        this.form.nationalCardFile = null;
-        event.target.value = "";
-      } else {
-        this.formErrors.nationalCardFile = "";
-        this.form.nationalCardFile = file;
+      if (file) {
+        if (!["application/pdf", "image/jpeg", "image/png"].includes(file.type)) {
+          this.formErrors.nationalCardFile = this.$t("invalidFileExtension");
+          this.form.nationalCardFile = null;
+          event.target.value = "";
+        } else if (file.size > this.maxFileSize) {
+          this.formErrors.nationalCardFile = this.$t("fileTooLarge");
+          this.form.nationalCardFile = null;
+          event.target.value = "";
+        } else {
+          this.formErrors.nationalCardFile = "";
+          this.form.nationalCardFile = file;
+        }
       }
     },
-
     onPowerPointFileChange(event) {
       const file = event.target.files[0];
-      const validTypes = [
-        "application/vnd.ms-powerpoint",
-        "application/vnd.openxmlformats-officedocument.presentationml.presentation",
-      ];
-      if (file && !validTypes.includes(file.type)) {
-        this.formErrors.powerPointFile = this.$t("invalidPowerPointExtension");
-        this.form.powerPointFile = null;
-        event.target.value = "";
-      } else {
-        this.formErrors.powerPointFile = "";
-        this.form.powerPointFile = file;
+      if (file) {
+        const validTypes = [
+          "application/vnd.ms-powerpoint",
+          "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+        ];
+        if (!validTypes.includes(file.type)) {
+          this.formErrors.powerPointFile = this.$t("invalidPowerPointExtension");
+          this.form.powerPointFile = null;
+          event.target.value = "";
+        } else if (file.size > this.maxFileSize) {
+          this.formErrors.powerPointFile = this.$t("fileTooLarge");
+          this.form.powerPointFile = null;
+          event.target.value = "";
+        } else {
+          this.formErrors.powerPointFile = "";
+          this.form.powerPointFile = file;
+        }
       }
     },
-
     validateForm() {
       this.formErrors = {};
       let isValid = true;
-      const requiredFields = [
-        { field: "fullName", message: this.$t("requiredField") },
-        { field: "governorate", message: this.$t("requiredField") },
-        { field: "nationalCardFile", message: this.$t("requiredFile") },
-        { field: "powerPointFile", message: this.$t("requiredFile") },
-      ];
-
-      requiredFields.forEach(({ field, message }) => {
-        if (!this.form[field]) {
-          this.formErrors[field] = message;
-          isValid = false;
-        }
-      });
-
+      if (!this.form.fullName || this.form.fullName.trim().length < 3) {
+        this.formErrors.fullName = this.$t("fullNameInvalid");
+        isValid = false;
+      }
+      if (!this.form.governorate) {
+        this.formErrors.governorate = this.$t("requiredField");
+        isValid = false;
+      }
+      if (!this.form.nationalCardFile) {
+        this.formErrors.nationalCardFile = this.$t("requiredFile");
+        isValid = false;
+      }
+      if (!this.form.powerPointFile) {
+        this.formErrors.powerPointFile = this.$t("requiredFile");
+        isValid = false;
+      }
       if (!this.form.termsAgreed) {
         this.formErrors.termsAgreed = this.$t("mustAgreeToTerms");
         isValid = false;
       }
-
       if (!this.turnstileToken) {
         this.turnstileError = this.$t("turnstileRequired");
+        console.error("Turnstile validation failed:", {
+          token: this.turnstileToken,
+          widgetId: this.turnstileWidgetId,
+          loaded: this.turnstileLoaded,
+        });
         isValid = false;
       }
-
       return isValid;
     },
-
     async submitForm() {
       if (!this.validateForm()) {
         this.toast.error(this.$t("pleaseFillAllRequiredFields"));
         return;
       }
-
       this.isSubmitting = true;
       try {
         const authToken = localStorage.getItem("token");
@@ -602,15 +638,22 @@ export default {
           this.toast.error(this.$t("authTokenMissing"));
           return;
         }
-
         await this.verifyCaptcha(authToken);
         await this.submitFormData(authToken);
+        this.isSubmitted = true;
+        this.toast.success(this.$t("formSubmittedSuccessfully"));
       } catch (error) {
-        console.error(" Form submission error:", error);
+        console.error("❌ Form submission error:", error);
         if (error.response?.status === 400) {
           this.toast.error(this.$t("invalidData"));
         } else if (error.response?.status === 401) {
           this.toast.error(this.$t("authTokenExpired"));
+        } else if (error.code === "ERR_NETWORK") {
+          this.toast.error(this.$t("networkError"));
+          if (this.turnstileRetryCount < this.maxRetries) {
+            this.turnstileRetryCount++;
+            setTimeout(() => this.submitForm(), 1000);
+          }
         } else {
           this.toast.error(this.$t("errorOccurred"));
         }
@@ -619,33 +662,40 @@ export default {
         this.isSubmitting = false;
       }
     },
-
     async verifyCaptcha(authToken) {
-      console.log(" Verifying Turnstile token...");
+      console.log("🔄 Verifying Turnstile token...");
       const formData = new FormData();
       formData.append("token", this.turnstileToken);
-      const response = await axios.post(
-        "https://api.int-mgm.org/api/Auth/VerifyCaptcha",
-        formData,
-        {
-          headers: {
-            "Content-Type": "multipart/form-data",
-            Authorization: `Bearer ${authToken}`,
-          },
-          timeout: 15000,
+      try {
+        const response = await axios.post(
+          "https://api.int-mgm.org/api/Auth/VerifyCaptcha",
+          formData,
+          {
+            headers: {
+              "Content-Type": "multipart/form-data",
+              Authorization: `Bearer ${authToken}`,
+            },
+            timeout: 15000,
+          }
+        );
+        console.log("✅ Captcha verification response:", response.data);
+        if (!response.data.success) {
+          this.turnstileError = this.$t("turnstileValidationFailed");
+          this.toast.error(this.$t("turnstileValidationFailed"));
+          throw new Error("Captcha verification failed");
         }
-      );
-      console.log(" Captcha verification response:", response.data);
-      if (!response.data.success) {
-        throw new Error("Captcha verification failed");
+      } catch (error) {
+        console.error("❌ Captcha verification failed:", error);
+        this.turnstileError = this.$t("turnstileValidationFailed");
+        this.toast.error(this.$t("turnstileValidationFailed"));
+        throw error;
       }
     },
-
     async submitFormData(authToken) {
-      console.log(" Submitting form data...");
+      console.log("🔄 Submitting form data...");
       const formData = new FormData();
-      formData.append("FullName", this.form.fullName || "");
-      formData.append("Governorate", this.form.governorate || "");
+      formData.append("FullName", this.form.fullName.trim());
+      formData.append("Governorate", this.form.governorate);
       if (this.form.nationalCardFile) {
         formData.append("TheNationalCard", this.form.nationalCardFile);
       }
@@ -658,29 +708,30 @@ export default {
           : this.$i18n.locale === "en"
           ? "EnNote"
           : "PeNote",
-        this.form.note || ""
+        this.form.note.trim()
       );
       formData.append("ConferenceVersionID", this.form.conferenceVersionID);
-
-      const response = await axios.post(
-        "https://api.int-mgm.org/api/InsideIraq/AddInformationInsideIraq",
-        formData,
-        {
-          headers: {
-            "Content-Type": "multipart/form-data",
-            Authorization: `Bearer ${authToken}`,
-          },
-          timeout: 30000,
+      try {
+        const response = await axios.post(
+          "https://api.int-mgm.org/api/InsideIraq/AddInformationInsideIraq",
+          formData,
+          {
+            headers: {
+              "Content-Type": "multipart/form-data",
+              Authorization: `Bearer ${authToken}`,
+            },
+            timeout: 30000,
+          }
+        );
+        if (response.status !== 200) {
+          throw new Error("Form submission failed");
         }
-      );
-
-      if (response.status === 200) {
-        console.log(" Form submitted successfully");
-        this.isSubmitted = true;
-        this.toast.success(this.$t("formSubmittedSuccessfully"));
+        console.log("✅ Form submitted successfully");
+      } catch (error) {
+        console.error("❌ Form submission error:", error);
+        throw error;
       }
     },
-
     resetForm() {
       this.form = {
         fullName: "",
@@ -704,17 +755,13 @@ export default {
 </script>
 
 <style lang="scss" scoped>
-@import url("https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700&family=Roboto:wght@400;700&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700&family=Roboto:wght@400;500;700&display=swap");
 
 .container {
   max-width: 1400px;
-  font-family: v-bind(
-      '$i18n.locale === "ar" || $i18n.locale === "fa" ? "Cairo" : "Roboto"'
-    ),
+  font-family: v-bind('$i18n.locale === "ar" || $i18n.locale === "fa" ? "Cairo" : "Roboto"'),
     sans-serif;
-  direction: v-bind(
-    '$i18n.locale === "ar" || $i18n.locale === "fa" ? "rtl" : "ltr"'
-  );
+  direction: v-bind('$i18n.locale === "ar" || $i18n.locale === "fa" ? "rtl" : "ltr"');
 }
 
 .conference-header {
@@ -842,12 +889,8 @@ export default {
 
 .terms-list {
   list-style-type: disc;
-  padding-left: v-bind(
-    '$i18n.locale === "ar" || $i18n.locale === "fa" ? "0" : "1.5rem"'
-  );
-  padding-right: v-bind(
-    '$i18n.locale === "ar" || $i18n.locale === "fa" ? "1.5rem" : "0"'
-  );
+  padding-left: v-bind('$i18n.locale === "ar" || $i18n.locale === "fa" ? "0" : "1.5rem"');
+  padding-right: v-bind('$i18n.locale === "ar" || $i18n.locale === "fa" ? "1.5rem" : "0"');
   margin-bottom: 1rem;
   color: #2c3e50;
 }
@@ -856,6 +899,17 @@ export default {
   margin-bottom: 0.5rem;
   font-size: 1rem;
   line-height: 1.6;
+}
+
+.terms-checkbox {
+  display: flex;
+  align-items: center;
+  margin-top: 1rem;
+}
+
+.terms-checkbox :deep(.custom-control-label) {
+  margin-left: v-bind('$i18n.locale === "ar" || $i18n.locale === "fa" ? "0.5rem" : "0"');
+  margin-right: v-bind('$i18n.locale === "ar" || $i18n.locale === "fa" ? "0" : "0.5rem"');
 }
 
 .success-message {
@@ -878,6 +932,96 @@ export default {
 textarea.form-control {
   resize: vertical;
   min-height: 100px;
+}
+
+.turnstile-section {
+  margin-top: 1.5rem;
+  padding: 1rem;
+  border: 1px solid #e9ecef;
+  border-radius: 8px;
+  background-color: #f8f9fa;
+}
+
+.turnstile-container {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 80px;
+  margin: 1rem 0;
+  position: relative;
+}
+
+.turnstile-widget {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 65px;
+  width: 100%;
+}
+
+[dir="rtl"] .turnstile-container,
+[dir="rtl"] .turnstile-widget {
+  direction: ltr;
+}
+
+.turnstile-widget iframe {
+  border: none !important;
+  border-radius: 4px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.debug-info {
+  padding: 0.5rem;
+  background-color: #e9ecef;
+  border-radius: 4px;
+  font-family: monospace;
+  font-size: 0.8rem;
+}
+
+.alert {
+  margin-top: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+
+.alert-warning {
+  background-color: #fff3cd;
+  border-color: #ffeaa7;
+  color: #856404;
+}
+
+.alert-success {
+  background-color: #d4edda;
+  border-color: #c3e6cb;
+  color: #155724;
+}
+
+.btn-outline-primary {
+  border-color: #195015;
+  color: #195015;
+}
+
+.btn-outline-primary:hover {
+  background-color: #195015;
+  border-color: #195015;
+  color: white;
+}
+
+.me-2 {
+  margin-right: 0.5rem !important;
+}
+
+.me-1 {
+  margin-right: 0.25rem !important;
+}
+
+[dir="rtl"] .me-2 {
+  margin-right: 0 !important;
+  margin-left: 0.5rem !important;
+}
+
+[dir="rtl"] .me-1 {
+  margin-right: 0 !important;
+  margin-left: 0.25rem !important;
 }
 
 @media (max-width: 768px) {
@@ -918,6 +1062,19 @@ textarea.form-control {
   .btn-primary {
     font-size: 0.9rem;
     padding: 0.5rem 1rem;
+  }
+
+  .turnstile-container {
+    min-height: 70px;
+  }
+
+  .turnstile-section {
+    padding: 0.75rem;
+  }
+
+  .debug-info {
+    font-size: 0.7rem;
+    padding: 0.25rem;
   }
 }
 </style>

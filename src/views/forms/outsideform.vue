@@ -20,9 +20,7 @@
       </div>
 
       <div class="language-selector mb-4">
-        <label for="languageSelect" class="form-label">{{
-          $t("selectLanguage")
-        }}</label>
+        <label for="languageSelect" class="form-label">{{ $t("selectLanguage") }}</label>
         <select
           id="languageSelect"
           v-model="$i18n.locale"
@@ -76,6 +74,7 @@
                   v-model="form.fullName"
                   :placeholder="$t('fullNamePlaceholder')"
                   required
+                  @input="validateFullName"
                   :state="formErrors.fullName ? false : null"
                 ></b-form-input>
                 <b-form-invalid-feedback v-if="formErrors.fullName">{{
@@ -166,29 +165,68 @@
                     {{ term }}
                   </li>
                 </ul>
-                <b-form-checkbox
-                  v-model="form.termsAgreed"
-                  required
-                  :state="formErrors.termsAgreed ? false : null"
-                >
-                  {{ $t("iAgree") }}
-                </b-form-checkbox>
-                <b-form-invalid-feedback v-if="formErrors.termsAgreed">{{
-                  formErrors.termsAgreed
-                }}</b-form-invalid-feedback>
+                <div class="terms-checkbox">
+                  <b-form-checkbox
+                    v-model="form.termsAgreed"
+                    required
+                    :state="formErrors.termsAgreed ? false : null"
+                  >
+                    {{ $t("iAgree") }}
+                  </b-form-checkbox>
+                  <b-form-invalid-feedback v-if="formErrors.termsAgreed">{{
+                    formErrors.termsAgreed
+                  }}</b-form-invalid-feedback>
+                </div>
               </div>
 
-              
               <div class="col-12">
                 <div class="turnstile-section">
-                  <h5 class="section-title">
-                    {{ $t("securityVerification") }}
-                  </h5>
-                  <div class="turnstile-container">
-                    <div id="turnstile-widget"></div>
+                  <h5 class="section-title">{{ $t("securityVerification") }}</h5>
+
+                  <div v-if="$isDevelopment" class="debug-info mb-2">
+                    <small class="text-muted">
+                      Script: {{ turnstileScriptLoaded ? 'Loaded' : 'Not loaded' }} |
+                      Widget: {{ turnstileLoaded ? 'Ready' : 'Not ready' }} |
+                      Token: {{ turnstileToken ? 'Present' : 'Missing' }}
+                    </small>
                   </div>
-                  <div v-if="turnstileError" class="alert alert-danger mt-2">
-                    {{ turnstileError }}
+
+                  <div class="turnstile-container">
+                    <div id="turnstile-widget" class="turnstile-widget"></div>
+
+                    <div v-if="!turnstileLoaded && !turnstileError" class="text-center">
+                      <b-spinner small class="me-2"></b-spinner>
+                      <span>{{ $t("loadingVerification") }}</span>
+                    </div>
+
+                    <div v-else-if="turnstileError" class="alert alert-warning">
+                      <div class="d-flex align-items-center justify-content-between">
+                        <div>
+                          <i class="fa fa-exclamation-triangle me-2"></i>
+                          {{ turnstileError }}
+                        </div>
+                        <b-button
+                          size="sm"
+                          variant="outline-primary"
+                          @click="handleReloadTurnstile"
+                          :disabled="isSubmitting"
+                        >
+                          <i class="fa fa-refresh me-1"></i>
+                          {{ $t("retry") }}
+                        </b-button>
+                      </div>
+                    </div>
+
+                    <div v-else-if="turnstileToken" class="alert alert-success">
+                      <i class="fa fa-check-circle me-2"></i>
+                      {{ $t("verificationComplete") }}
+                    </div>
+                  </div>
+
+                  <div class="mt-2">
+                    <small class="text-muted">
+                      {{ $t("turnstileHelpText") }}
+                    </small>
                   </div>
                 </div>
               </div>
@@ -280,14 +318,15 @@ export default {
         ...countries.countries,
       ],
       termsList: [],
-
-      turnstileSiteKey: "1x00000000000000000000AA",
+      turnstileSiteKey: "0x4AAAAAABgha0gsIlInCX7u",
+      turnstileScriptLoaded: false,
       turnstileToken: null,
       turnstileWidgetId: null,
       turnstileLoaded: false,
       turnstileError: null,
       turnstileRetryCount: 0,
       maxRetries: 3,
+      maxFileSize: 5 * 1024 * 1024,
     };
   },
   computed: {
@@ -307,8 +346,7 @@ export default {
       handler(newLocale) {
         this.updateTermsList(newLocale);
         this.updateDirection();
-        // إعادة تحميل Turnstile باللغة الجديدة
-        this.reloadTurnstile();
+        this.handleReloadTurnstile();
       },
       immediate: true,
     },
@@ -324,52 +362,55 @@ export default {
       this.updateDirection();
       await this.loadTurnstileScript();
     },
-
     async loadTurnstileScript() {
       try {
-        // تحقق من وجود السكربت مسبقاً
         if (window.turnstile) {
+          this.turnstileScriptLoaded = true;
           this.turnstileLoaded = true;
           await this.initializeTurnstile();
           return;
         }
 
-        console.log(" Loading Turnstile script...");
-
+        console.log("Loading Turnstile script...");
         const script = document.createElement("script");
         script.src = "https://challenges.cloudflare.com/turnstile/v0/api.js";
         script.async = true;
         script.defer = true;
 
-        const loadPromise = new Promise((resolve, reject) => {
-          script.onload = () => {
-            console.log("✅ Turnstile script loaded successfully");
-            this.turnstileLoaded = true;
-            resolve();
-          };
+        const loadTimeout = setTimeout(() => {
+          console.error("Turnstile script load timeout");
+          this.turnstileError = this.$t("turnstileScriptFailed");
+          this.toast.error(this.$t("turnstileScriptFailed"));
+        }, 10000);
 
-          script.onerror = (error) => {
-            console.error(" Failed to load Turnstile script:", error);
-            this.turnstileError = this.$t("turnstileScriptFailed");
-            reject(error);
-          };
-        });
+        script.onload = () => {
+          clearTimeout(loadTimeout);
+          console.log("Turnstile script loaded successfully");
+          this.turnstileScriptLoaded = true;
+          this.turnstileLoaded = true;
+          setTimeout(() => this.initializeTurnstile(), 100);
+        };
+
+        script.onerror = () => {
+          clearTimeout(loadTimeout);
+          console.error("Failed to load Turnstile script");
+          this.turnstileError = this.$t("turnstileScriptFailed");
+          this.toast.error(this.$t("turnstileScriptFailed"));
+        };
 
         document.head.appendChild(script);
-        await loadPromise;
-        await new Promise((resolve) => setTimeout(resolve, 500));
-        await this.initializeTurnstile();
       } catch (error) {
-        console.error(" Error loading Turnstile:", error);
+        console.error("Error loading Turnstile:", error);
         this.turnstileError = this.$t("turnstileScriptFailed");
+        this.toast.error(this.$t("turnstileScriptFailed"));
       }
     },
-
     async initializeTurnstile() {
       try {
         if (!window.turnstile) {
           throw new Error("Turnstile not available");
         }
+
         this.cleanupTurnstile();
         const container = document.getElementById("turnstile-widget");
         if (!container) {
@@ -377,69 +418,66 @@ export default {
         }
 
         container.innerHTML = "";
+        console.log("Initializing Turnstile widget...");
 
-        console.log(" Initializing Turnstile widget...");
+        const siteKey = this.turnstileSiteKey.trim();
+        if (!siteKey || siteKey.length < 10) {
+          throw new Error("Invalid site key");
+        }
 
-        const options = {
-          sitekey: this.turnstileSiteKey,
+        this.turnstileWidgetId = window.turnstile.render("#turnstile-widget", {
+          sitekey: siteKey,
           theme: "auto",
           size: "normal",
           language: this.getLanguageCode(),
-
           callback: (token) => {
-            console.log(" Turnstile token received");
+            console.log("Turnstile token received:", token);
             this.turnstileToken = token;
             this.turnstileError = null;
             this.turnstileRetryCount = 0;
           },
-
           "error-callback": (errorCode) => {
-            console.error(" Turnstile error:", errorCode);
+            console.error("Turnstile error:", errorCode);
             this.handleTurnstileError(errorCode);
           },
-
           "expired-callback": () => {
-            console.log(" Turnstile token expired");
+            console.log("Turnstile token expired");
             this.turnstileToken = null;
             this.turnstileError = this.$t("turnstileExpired");
+            this.toast.error(this.$t("turnstileExpired"));
             this.resetTurnstile();
           },
-
           "timeout-callback": () => {
-            console.log(" Turnstile timeout");
+            console.log("Turnstile timeout");
             this.turnstileToken = null;
-            this.turnstileError = this.$t("turnstileTimeout");
+            this.turnstileError = this.$t("timeoutError");
+            this.toast.error(this.$t("timeoutError"));
             this.resetTurnstile();
           },
-        };
+          "unsupported-callback": () => {
+            console.error("Turnstile unsupported");
+            this.turnstileError = this.$t("turnstileUnsupported");
+            this.toast.error(this.$t("turnstileUnsupported"));
+          },
+        });
 
-        this.turnstileWidgetId = window.turnstile.render(
-          "#turnstile-widget",
-          options
-        );
-
-        if (this.turnstileWidgetId) {
-          console.log(
-            " Turnstile initialized successfully with ID:",
-            this.turnstileWidgetId
-          );
-        } else {
+        if (!this.turnstileWidgetId) {
           throw new Error("Failed to initialize Turnstile widget");
         }
+
+        console.log("Turnstile initialized with ID:", this.turnstileWidgetId);
       } catch (error) {
-        console.error(" Error initializing Turnstile:", error);
+        console.error("Error initializing Turnstile:", error);
         this.turnstileError = this.$t("turnstileInitFailed");
+        this.toast.error(this.$t("turnstileInitFailed"));
 
         if (this.turnstileRetryCount < this.maxRetries) {
           this.turnstileRetryCount++;
-          console.log(
-            `🔄 Retrying Turnstile initialization (${this.turnstileRetryCount}/${this.maxRetries})...`
-          );
+          console.log(`Retrying Turnstile initialization (${this.turnstileRetryCount}/${this.maxRetries})...`);
           setTimeout(() => this.initializeTurnstile(), 2000);
         }
       }
     },
-
     handleTurnstileError(errorCode) {
       this.turnstileToken = null;
 
@@ -450,75 +488,74 @@ export default {
         300010: this.$t("turnstileNetworkError"),
         300020: this.$t("turnstileGenericError"),
         300030: this.$t("turnstileTimeoutError"),
+        600010: this.$t("turnstileInternalError"),
+        600020: this.$t("turnstileInternalError"),
+        600030: this.$t("turnstileInternalError"),
       };
 
-      const message =
-        errorMessages[errorCode] ||
-        this.$t("turnstileUnknownError", { code: errorCode });
+      const message = errorMessages[errorCode] || this.$t("turnstileUnknownError", { code: errorCode });
       this.turnstileError = message;
+      this.toast.error(message);
 
-      console.error("Turnstile Error Details:", { errorCode, message });
+      console.error("Turnstile Error Details:", {
+        errorCode,
+        message,
+        siteKey: this.turnstileSiteKey,
+        language: this.getLanguageCode(),
+      });
 
-      const retryableErrors = [300010, 300020, 300030];
-      if (
-        retryableErrors.includes(errorCode) &&
-        this.turnstileRetryCount < this.maxRetries
-      ) {
+      const retryableErrors = [300010, 300020, 300030, 600010, 600020];
+      if (retryableErrors.includes(errorCode) && this.turnstileRetryCount < this.maxRetries) {
         this.turnstileRetryCount++;
+        console.log(`Retrying after error ${errorCode} (${this.turnstileRetryCount}/${this.maxRetries})...`);
         setTimeout(() => this.resetTurnstile(), 3000);
       }
     },
-
     resetTurnstile() {
       if (window.turnstile && this.turnstileWidgetId) {
         try {
           window.turnstile.reset(this.turnstileWidgetId);
-          console.log(" Turnstile widget reset");
+          console.log("Turnstile widget reset");
           this.turnstileError = null;
         } catch (error) {
           console.error("Error resetting Turnstile:", error);
-          this.reloadTurnstile();
+          this.handleReloadTurnstile();
         }
       }
     },
-
-    async reloadTurnstile() {
+    async handleReloadTurnstile() {
       this.cleanupTurnstile();
       this.turnstileToken = null;
       this.turnstileError = null;
       this.turnstileRetryCount = 0;
-
-      await new Promise((resolve) => setTimeout(resolve, 1000));
+      await new Promise((resolve) => setTimeout(resolve, 500));
       await this.initializeTurnstile();
     },
-
     cleanupTurnstile() {
       if (window.turnstile && this.turnstileWidgetId) {
         try {
           window.turnstile.remove(this.turnstileWidgetId);
-          console.log("🧹 Turnstile widget removed");
+          console.log("Turnstile widget removed");
         } catch (error) {
-          console.log("Error removing Turnstile widget:", error);
+          console.error("Error removing Turnstile widget:", error);
+          const container = document.getElementById("turnstile-widget");
+          if (container) {
+            container.innerHTML = "";
+          }
         }
         this.turnstileWidgetId = null;
       }
+      this.turnstileToken = null;
     },
-
     getLanguageCode() {
-      const languageMap = {
-        ar: "ar",
-        en: "en",
-        fa: "fa",
-      };
+      const languageMap = { ar: "ar", en: "en", fa: "fa" };
       return languageMap[this.$i18n.locale] || "en";
     },
-
     updateDirection() {
       const isRTL = ["ar", "fa"].includes(this.$i18n.locale);
       document.documentElement.dir = isRTL ? "rtl" : "ltr";
       document.documentElement.lang = this.$i18n.locale;
     },
-
     updateTermsList(locale) {
       const termsKey =
         locale === "ar"
@@ -526,63 +563,79 @@ export default {
           : locale === "en"
           ? "iAgreeToTermsOutside_en"
           : "iAgreeToTermsOutside_fa";
-
-      const termsText = this.$t(termsKey);
-      this.termsList = termsText
+      this.termsList = this.$t(termsKey)
         .split("\n")
         .filter((term) => term.trim())
         .map((term) => term.replace(/^- /, ""));
     },
-
     onPassportFileChange(event) {
       const file = event.target.files[0];
-      if (
-        file &&
-        !["application/pdf", "image/jpeg", "image/png"].includes(file.type)
-      ) {
-        this.formErrors.ThePassport = this.$t("invalidFileExtension");
-        this.form.ThePassport = null;
-        event.target.value = "";
-      } else {
-        this.formErrors.ThePassport = "";
-        this.form.ThePassport = file;
+      if (file) {
+        if (!["application/pdf", "image/jpeg", "image/png"].includes(file.type)) {
+          this.formErrors.ThePassport = this.$t("invalidFileExtension");
+          this.form.ThePassport = null;
+          event.target.value = "";
+        } else if (file.size > this.maxFileSize) {
+          this.formErrors.ThePassport = this.$t("fileTooLarge");
+          this.form.ThePassport = null;
+          event.target.value = "";
+        } else {
+          this.formErrors.ThePassport = "";
+          this.form.ThePassport = file;
+        }
       }
     },
-
     onPowerPointChange(event) {
       const file = event.target.files[0];
-      const validTypes = [
-        "application/vnd.ms-powerpoint",
-        "application/vnd.openxmlformats-officedocument.presentationml.presentation",
-      ];
-
-      if (file && !validTypes.includes(file.type)) {
-        this.formErrors.PowerPoint = this.$t("invalidPowerPointExtension");
-        this.form.PowerPoint = null;
-        event.target.value = "";
-      } else {
-        this.formErrors.PowerPoint = "";
-        this.form.PowerPoint = file;
+      if (file) {
+        const validTypes = [
+          "application/vnd.ms-powerpoint",
+          "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+        ];
+        if (!validTypes.includes(file.type)) {
+          this.formErrors.PowerPoint = this.$t("invalidPowerPointExtension");
+          this.form.PowerPoint = null;
+          event.target.value = "";
+        } else if (file.size > this.maxFileSize) {
+          this.formErrors.PowerPoint = this.$t("fileTooLarge");
+          this.form.PowerPoint = null;
+          event.target.value = "";
+        } else {
+          this.formErrors.PowerPoint = "";
+          this.form.PowerPoint = file;
+        }
       }
     },
-
+    validateFullName() {
+      if (this.form.fullName && this.form.fullName.trim().length < 3) {
+        this.formErrors.fullName = this.$t("fullNameInvalid");
+      } else {
+        this.formErrors.fullName = "";
+      }
+    },
     validateForm() {
       this.formErrors = {};
       let isValid = true;
 
-      const requiredFields = [
-        { field: "fullName", message: this.$t("requiredField") },
-        { field: "Country", message: this.$t("requiredField") },
-        { field: "ThePassport", message: this.$t("requiredFile") },
-        { field: "PowerPoint", message: this.$t("requiredFile") },
-      ];
+      if (!this.form.fullName || this.form.fullName.trim().length < 3) {
+        this.formErrors.fullName = this.$t("fullNameInvalid");
+        isValid = false;
+      }
 
-      requiredFields.forEach(({ field, message }) => {
-        if (!this.form[field]) {
-          this.formErrors[field] = message;
-          isValid = false;
-        }
-      });
+      if (!this.form.Country) {
+        this.formErrors.Country = this.$t("requiredField");
+        isValid = false;
+      }
+
+      if (!this.form.ThePassport) {
+        this.formErrors.ThePassport = this.$t("requiredFile");
+        isValid = false;
+      }
+
+      if (!this.form.PowerPoint) {
+        this.formErrors.PowerPoint = this.$t("requiredFile");
+        isValid = false;
+      }
 
       if (!this.form.termsAgreed) {
         this.formErrors.termsAgreed = this.$t("mustAgreeToTerms");
@@ -591,37 +644,43 @@ export default {
 
       if (!this.turnstileToken) {
         this.turnstileError = this.$t("turnstileRequired");
+        console.error("Turnstile validation failed:", {
+          token: this.turnstileToken,
+          widgetId: this.turnstileWidgetId,
+          loaded: this.turnstileLoaded,
+        });
         isValid = false;
       }
 
       return isValid;
     },
-
     async submitForm() {
       if (!this.validateForm()) {
         this.toast.error(this.$t("pleaseFillAllRequiredFields"));
         return;
       }
-
       this.isSubmitting = true;
-
       try {
         const authToken = localStorage.getItem("token");
         if (!authToken) {
           this.toast.error(this.$t("authTokenMissing"));
           return;
         }
-
-        await this.verifyCaptcha(authToken);
-
         await this.submitFormData(authToken);
+        this.isSubmitted = true;
+        this.toast.success(this.$t("formSubmittedSuccessfully"));
       } catch (error) {
-        console.error(" Form submission error:", error);
-
+        console.error("Form submission error:", error);
         if (error.response?.status === 400) {
           this.toast.error(this.$t("invalidData"));
         } else if (error.response?.status === 401) {
           this.toast.error(this.$t("authTokenExpired"));
+        } else if (error.code === "ERR_NETWORK") {
+          this.toast.error(this.$t("networkError"));
+          if (this.turnstileRetryCount < this.maxRetries) {
+            this.turnstileRetryCount++;
+            setTimeout(() => this.submitForm(), 1000);
+          }
         } else {
           this.toast.error(this.$t("errorOccurred"));
         }
@@ -630,42 +689,15 @@ export default {
         this.isSubmitting = false;
       }
     },
-
-    async verifyCaptcha(authToken) {
-      console.log(" Verifying Turnstile token...");
-
-      const formData = new FormData();
-      formData.append("token", this.turnstileToken);
-
-      const response = await axios.post(
-        "https://api.int-mgm.org/api/Auth/VerifyCaptcha",
-        formData,
-        {
-          headers: {
-            "Content-Type": "multipart/form-data",
-            Authorization: `Bearer ${authToken}`,
-          },
-          timeout: 15000,
-        }
-      );
-
-      console.log(" Captcha verification response:", response.data);
-
-      if (!response.data.success) {
-        throw new Error("Captcha verification failed");
-      }
-    },
-
     async submitFormData(authToken) {
-      console.log(" Submitting form data...");
-
+      console.log("Submitting form data...");
       const formData = new FormData();
-
-      formData.append("FullName", this.form.fullName);
+      formData.append("FullName", this.form.fullName.trim());
       formData.append("Country", this.form.Country);
       formData.append("ThePassport", this.form.ThePassport);
       formData.append("PowerPoint", this.form.PowerPoint);
       formData.append("ConferenceVersionID", this.form.ConferenceVersionID);
+      formData.append("CaptchaToken", this.turnstileToken);
 
       const noteField =
         this.$i18n.locale === "ar"
@@ -673,7 +705,7 @@ export default {
           : this.$i18n.locale === "en"
           ? "EnNote"
           : "PeNote";
-      formData.append(noteField, this.form.Note || "");
+      formData.append(noteField, this.form.Note.trim());
 
       const additionalFields = {
         ArFacilityFullName: "",
@@ -687,30 +719,30 @@ export default {
         TripDate: "",
         FlightDetails: "",
       };
-
       Object.entries(additionalFields).forEach(([key, value]) => {
         formData.append(key, value);
       });
 
-      const response = await axios.post(
-        "https://api.int-mgm.org/api/OutsideIraq/AddInformationOutsideIraq",
-        formData,
-        {
-          headers: {
-            "Content-Type": "multipart/form-data",
-            Authorization: `Bearer ${authToken}`,
-          },
-          timeout: 30000,
+      try {
+        const response = await axios.post(
+          "https://api.int-mgm.org/api/OutsideIraq/AddInformationOutsideIraq",
+          formData,
+          {
+            headers: {
+              "Content-Type": "multipart/form-data",
+              Authorization: `Bearer ${authToken}`,
+            },
+            timeout: 30000,
+          }
+        );
+        if (response.status !== 200) {
+          throw new Error("Form submission failed");
         }
-      );
-
-      if (response.status === 200) {
-        console.log(" Form submitted successfully");
-        this.isSubmitted = true;
-        this.toast.success(this.$t("formSubmittedSuccessfully"));
+      } catch (error) {
+        console.error("Form submission error:", error);
+        throw error;
       }
     },
-
     resetForm() {
       this.form = {
         fullName: "",
@@ -721,15 +753,12 @@ export default {
         ConferenceVersionID: 3,
         termsAgreed: false,
       };
-
       this.formErrors = {};
       this.isSubmitted = false;
       this.turnstileError = null;
-
       document.querySelectorAll('input[type="file"]').forEach((input) => {
         input.value = "";
       });
-
       this.resetTurnstile();
     },
   },
@@ -741,20 +770,43 @@ export default {
 
 .container {
   max-width: 1400px;
-  font-family: v-bind(
-      '$i18n.locale === "ar" || $i18n.locale === "fa" ? "Cairo" : "Roboto"'
-    ),
+  font-family: v-bind('$i18n.locale === "ar" || $i18n.locale === "fa" ? "Cairo" : "Roboto"'),
     sans-serif;
-  direction: v-bind(
-    '$i18n.locale === "ar" || $i18n.locale === "fa" ? "rtl" : "ltr"'
-  );
+  direction: v-bind('$i18n.locale === "ar" || $i18n.locale === "fa" ? "rtl" : "ltr"');
 }
 
-.navbar-custom {
-  background: linear-gradient(135deg, #195015 0%, #2c7a2c 100%);
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
-  padding: 1rem 0;
-  z-index: 1000;
+.conference-header {
+  background: linear-gradient(90deg, #195015 0%, #2c7a2c 100%);
+  padding: 2rem 1rem;
+  border-radius: 12px;
+  color: white;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
+}
+
+.header-content {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+.title-container {
+  flex-grow: 1;
+  text-align: center;
+}
+
+.conference-title {
+  font-size: 2.5rem;
+  font-weight: 700;
+  margin-bottom: 0.5rem;
+}
+
+.conference-subtitle {
+  font-size: 1.5rem;
+  font-weight: 400;
+  margin: 0;
 }
 
 .logo-container {
@@ -782,51 +834,6 @@ export default {
 
 .logo-container:hover .logo-img {
   transform: scale(1.05);
-}
-
-.conference-header {
-  background: linear-gradient(90deg, #195015 0%, #2c7a2c 100%);
-  padding: 2rem 1rem;
-  border-radius: 12px;
-  color: white;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
-}
-
-.conference-title {
-  font-size: 2.5rem;
-  font-weight: 700;
-  margin-bottom: 0.5rem;
-}
-
-.conference-subtitle {
-  font-size: 1.5rem;
-  font-weight: 400;
-}
-
-.header-content {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  width: 100%;
-  max-width: 1200px;
-  margin: 0 auto;
-}
-
-.title-container {
-  flex-grow: 1;
-  text-align: center;
-}
-
-.conference-title {
-  font-size: 2.5rem;
-  font-weight: 700;
-  margin-bottom: 0.5rem;
-}
-
-.conference-subtitle {
-  font-size: 1.5rem;
-  font-weight: 400;
-  margin: 0;
 }
 
 .language-selector {
@@ -900,12 +907,8 @@ export default {
 
 .terms-list {
   list-style-type: disc;
-  padding-left: v-bind(
-    '$i18n.locale === "ar" || $i18n.locale === "fa" ? "0" : "1.5rem"'
-  );
-  padding-right: v-bind(
-    '$i18n.locale === "ar" || $i18n.locale === "fa" ? "1.5rem" : "0"'
-  );
+  padding-left: v-bind('$i18n.locale === "ar" || $i18n.locale === "fa" ? "0" : "1.5rem"');
+  padding-right: v-bind('$i18n.locale === "ar" || $i18n.locale === "fa" ? "1.5rem" : "0"');
   margin-bottom: 1rem;
   color: #2c3e50;
 }
@@ -914,6 +917,17 @@ export default {
   margin-bottom: 0.5rem;
   font-size: 1rem;
   line-height: 1.6;
+}
+
+.terms-checkbox {
+  display: flex;
+  align-items: center;
+  margin-top: 1rem;
+}
+
+.terms-checkbox :deep(.custom-control-label) {
+  margin-left: v-bind('$i18n.locale === "ar" || $i18n.locale === "fa" ? "0.5rem" : "0"');
+  margin-right: v-bind('$i18n.locale === "ar" || $i18n.locale === "fa" ? "0" : "0.5rem"');
 }
 
 .success-message {
@@ -937,6 +951,96 @@ export default {
 textarea.form-control {
   resize: vertical;
   min-height: 100px;
+}
+
+.turnstile-section {
+  margin-top: 1.5rem;
+  padding: 1rem;
+  border: 1px solid #e9ecef;
+  border-radius: 8px;
+  background-color: #f8f9fa;
+}
+
+.turnstile-container {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 80px;
+  margin: 1rem 0;
+  position: relative;
+}
+
+.turnstile-widget {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 65px;
+  width: 100%;
+}
+
+[dir="rtl"] .turnstile-container,
+[dir="rtl"] .turnstile-widget {
+  direction: ltr;
+}
+
+.turnstile-widget iframe {
+  border: none !important;
+  border-radius: 4px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.debug-info {
+  padding: 0.5rem;
+  background-color: #e9ecef;
+  border-radius: 4px;
+  font-family: monospace;
+  font-size: 0.8rem;
+}
+
+.alert {
+  margin-top: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+
+.alert-warning {
+  background-color: #fff3cd;
+  border-color: #ffeaa7;
+  color: #856404;
+}
+
+.alert-success {
+  background-color: #d4edda;
+  border-color: #c3e6cb;
+  color: #155724;
+}
+
+.btn-outline-primary {
+  border-color: #195015;
+  color: #195015;
+}
+
+.btn-outline-primary:hover {
+  background-color: #195015;
+  border-color: #195015;
+  color: white;
+}
+
+.me-2 {
+  margin-right: 0.5rem !important;
+}
+
+.me-1 {
+  margin-right: 0.25rem !important;
+}
+
+[dir="rtl"] .me-2 {
+  margin-right: 0 !important;
+  margin-left: 0.5rem !important;
+}
+
+[dir="rtl"] .me-1 {
+  margin-right: 0 !important;
+  margin-left: 0.25rem !important;
 }
 
 @media (max-width: 768px) {
@@ -969,17 +1073,18 @@ textarea.form-control {
   .logo-container {
     margin-left: 0;
   }
-}
-.turnstile-container {
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  min-height: 65px;
-  margin: 1rem 0;
-}
 
-/* للغات RTL */
-[dir="rtl"] .turnstile-container {
-  direction: ltr; /* Turnstile يعمل بشكل أفضل مع LTR */
+  .turnstile-container {
+    min-height: 70px;
+  }
+
+  .turnstile-section {
+    padding: 0.75rem;
+  }
+
+  .debug-info {
+    font-size: 0.7rem;
+    padding: 0.25rem;
+  }
 }
 </style>

@@ -167,7 +167,7 @@
                     <BTd>{{ item.fullName }}</BTd>
                     <BTd>{{ item.email }}</BTd>
                     <BTd>{{ item.workPlace }}</BTd>
-                    <BTd>{{ item.countryOfResidence }}</BTd>
+                    <BTd>{{ getCountryName(item.countryOfResidence) }}</BTd>
                     <BTd>{{
                       item.conferenceVersion?.arabicName || "غير محدد"
                     }}</BTd>
@@ -265,10 +265,10 @@
           <strong class="text-muted">البريد الإلكتروني:</strong>
           <span>{{ selectedItem.email }}</span>
         </div>
-        <div class="mb-3 item-info">
-          <strong class="text-muted">البلد:</strong>
-          <span>{{ selectedItem.countryOfResidence }}</span>
-        </div>
+<div class="mb-3 item-info">
+  <strong class="text-muted">البلد:</strong>
+  <span>{{ getCountryName(selectedItem.countryOfResidence) }}</span>
+</div>
         <div class="mb-3 item-info">
           <strong class="text-muted">مكان العمل:</strong>
           <span>{{ selectedItem.workPlace }}</span>
@@ -292,28 +292,26 @@
             {{ selectedItem.whatsAppNumber }}
           </a>
         </div>
-        <div class="mb-3 item-info">
-          <strong class="text-muted">اللغات:</strong>
-          <div
-            v-if="
-              selectedItem.languageName &&
-              isLanguageArray(selectedItem.languageName)
-            "
-            class="language-display"
-          >
-            <div
-              v-for="(lang, index) in parseLanguages(selectedItem.languageName)"
-              :key="index"
-              class="language-item"
-            >
-              <span class="language-name m-2">{{ lang.name }}</span> :
-              <span class="language-level">{{
-                getLanguageLevelText(lang.level)
-              }}</span>
-            </div>
-          </div>
-          <span v-else>{{ selectedItem.languageName || "-" }}</span>
-        </div>
+<div class="mb-3 ">
+  <strong class="text-muted">اللغات:</strong>
+  <div
+    v-if="
+      selectedItem.languageName &&
+      isLanguageArray(selectedItem.languageName)
+    "
+    class="language-display"
+  >
+    <div
+      v-for="(lang, index) in parseLanguages(selectedItem.languageName)"
+      :key="index"
+      class="language-item"
+    >
+      <span class="language-name m-2">{{ lang.name }}</span> :
+      <span class="language-level">{{ getLanguageLevelText(lang.level) || 'غير محدد' }}</span>
+    </div>
+  </div>
+  <span v-else>{{ selectedItem.languageName || "-" }}</span>
+</div>
         <div class="mb-3 item-info">
           <strong class="text-muted">نوع المشاركة:</strong>
           <span>
@@ -1145,6 +1143,11 @@ export default {
         }, 1000);
       });
     },
+    getCountryName(countryCode) {
+  if (!countryCode) return "-";
+  const country = this.countries.find((c) => c.value === countryCode);
+  return country ? country.text : countryCode;
+},
 
     openModal(item) {
       this.selectedItem = { ...item };
@@ -1732,7 +1735,7 @@ export default {
 
 .language-level {
   font-size: 0.85rem;
-  color: #6c757d;
+  color: #000000;
 }
 
 .btn-remove-language {
