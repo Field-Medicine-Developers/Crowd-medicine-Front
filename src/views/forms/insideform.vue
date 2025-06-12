@@ -286,7 +286,7 @@ export default {
       maxFileSize: 5 * 1024 * 1024, // 5MB limit for files
       fallbackLogo:
         "https://api.int-mgm.org/images/settings/84ccf070-9a30-4559-b86c-3c6512c09764.png",
-      turnstileSiteKey: "0x4AAAAAABgha0gsIlInCX7u", // تأكد من أن هذا المفتاح صحيح
+      turnstileSiteKey: "0x4AAAAAABgha0gsIlInCX7u",
       form: {
         fullName: "",
         governorate: "",
@@ -437,11 +437,6 @@ export default {
             this.toast.error(this.$t("turnstileTimeout"));
             this.resetTurnstile();
           },
-          "unsupported-callback": () => {
-            console.error("❌ Turnstile unsupported");
-            this.turnstileError = this.$t("turnstileUnsupported");
-            this.toast.error(this.$t("turnstileUnsupported"));
-          },
         });
         if (!this.turnstileWidgetId) {
           throw new Error("Failed to initialize Turnstile widget");
@@ -451,13 +446,6 @@ export default {
         console.error("❌ Error initializing Turnstile:", error);
         this.turnstileError = this.$t("turnstileInitFailed");
         this.toast.error(this.$t("turnstileInitFailed"));
-        if (this.turnstileRetryCount < this.maxRetries) {
-          this.turnstileRetryCount++;
-          console.log(
-            `🔄 Retrying Turnstile initialization (${this.turnstileRetryCount}/${this.maxRetries})...`
-          );
-          setTimeout(() => this.initializeTurnstile(), 2000);
-        }
       }
     },
     handleTurnstileError(errorCode) {
@@ -638,7 +626,6 @@ export default {
           this.toast.error(this.$t("authTokenMissing"));
           return;
         }
-        await this.verifyCaptcha(authToken);
         await this.submitFormData(authToken);
         this.isSubmitted = true;
         this.toast.success(this.$t("formSubmittedSuccessfully"));
@@ -662,35 +649,6 @@ export default {
         this.isSubmitting = false;
       }
     },
-    async verifyCaptcha(authToken) {
-      console.log("🔄 Verifying Turnstile token...");
-      const formData = new FormData();
-      formData.append("token", this.turnstileToken);
-      try {
-        const response = await axios.post(
-          "https://api.int-mgm.org/api/Auth/VerifyCaptcha",
-          formData,
-          {
-            headers: {
-              "Content-Type": "multipart/form-data",
-              Authorization: `Bearer ${authToken}`,
-            },
-            timeout: 15000,
-          }
-        );
-        console.log("✅ Captcha verification response:", response.data);
-        if (!response.data.success) {
-          this.turnstileError = this.$t("turnstileValidationFailed");
-          this.toast.error(this.$t("turnstileValidationFailed"));
-          throw new Error("Captcha verification failed");
-        }
-      } catch (error) {
-        console.error("❌ Captcha verification failed:", error);
-        this.turnstileError = this.$t("turnstileValidationFailed");
-        this.toast.error(this.$t("turnstileValidationFailed"));
-        throw error;
-      }
-    },
     async submitFormData(authToken) {
       console.log("🔄 Submitting form data...");
       const formData = new FormData();
@@ -711,6 +669,12 @@ export default {
         this.form.note.trim()
       );
       formData.append("ConferenceVersionID", this.form.conferenceVersionID);
+      formData.append("CaptchaToken", this.turnstileToken);
+      formData.append("ArFacilityFullName", "");
+      formData.append("EnFacilityFullName", "");
+      formData.append("PeFacilityFullName", "");
+      formData.append("RelationshipFacilities", "0");
+      formData.append("TheFacilityNationalCard", "");
       try {
         const response = await axios.post(
           "https://api.int-mgm.org/api/InsideIraq/AddInformationInsideIraq",
