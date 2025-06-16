@@ -346,5 +346,13 @@
   "turnstileInternalError": "Internal security verification error",
   "turnstileUnsupported": "Security verification not supported in this browser",
   "turnstileUnknownError": "Unknown security verification error (Code: {code})",
-  "timeoutError": "Request timeout. Please try again."
+  "timeoutError": "Request timeout. Please try again.",
+
+  "verificationRequired": "Security verification is required",
+  "verificationCompleted": "Verification completed successfully",
+  "verificationError": "Verification failed, please try again",
+  "verificationExpired": "Verification expired, please try again",
+  "pleaseCompleteVerification": "Please complete the security verification to proceed"
+
+  
 }

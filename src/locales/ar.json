@@ -434,5 +434,11 @@
   "turnstileInternalError": "خطأ داخلي في التحقق الأمني",
   "turnstileUnsupported": "التحقق الأمني غير مدعوم في هذا المتصفح",
   "turnstileUnknownError": "خطأ غير معروف في التحقق الأمني (الرمز: {code})",
-  "timeoutError": "انتهت مهلة الطلب. يرجى المحاولة مرة أخرى."
+  "timeoutError": "انتهت مهلة الطلب. يرجى المحاولة مرة أخرى.",
+
+    "verificationRequired": "التحقق مطلوب",
+  "verificationCompleted": "تم التحقق بنجاح",
+  "verificationError": "حدث خطأ أثناء التحقق",
+  "verificationExpired": "انتهت صلاحية التحقق. يرجى المحاولة مرة أخرى.",
+  "pleaseCompleteVerification": "يرجى إكمال التحقق الأمني للمتابعة."
 }

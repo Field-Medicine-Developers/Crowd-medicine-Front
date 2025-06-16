@@ -321,5 +321,12 @@
   "turnstileInternalError": "خطای داخلی تأیید امنیتی",
   "turnstileUnsupported": "تأیید امنیتی در این مرورگر پشتیبانی نمی‌شود",
   "turnstileUnknownError": "خطای ناشناخته تأیید امنیتی (کد: {code})",
-  "timeoutError": "تایم‌اوت درخواست. لطفاً دوباره تلاش کنید."
+  "timeoutError": "تایم‌اوت درخواست. لطفاً دوباره تلاش کنید.",
+
+
+      "verificationRequired": "تأیید امنیتی مورد نیاز است",
+  "verificationCompleted": "تأیید امنیتی با موفقیت انجام شد",
+  "verificationError": "خطای تأیید امنیتی. لطفاً دوباره تلاش کنید.",
+  "verificationExpired": "تأیید امنیتی منقضی شده است. لطفاً صفحه را تازه کنید و دوباره تلاش کنید.",
+  "pleaseCompleteVerification": "لطفاً تأیید امنیتی را تکمیل کنید تا ادامه دهید."
 }

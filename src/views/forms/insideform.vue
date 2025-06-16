@@ -145,8 +145,10 @@
                   v-model="form.termsAgreed"
                   required
                   :state="formErrors.termsAgreed ? false : null"
+                  class="custom-checkbox"
+                  size="lg"
                 >
-                  {{ $t("iAgree") }}
+                  <span class="checkbox-label">{{ $t("iAgree") }}</span>
                 </b-form-checkbox>
                 <b-form-invalid-feedback v-if="formErrors.termsAgreed">
                   {{ formErrors.termsAgreed }}
@@ -154,57 +156,42 @@
               </div>
             </div>
 
-            <div class="col-12">
-              <div class="turnstile-section">
-                <h5 class="section-title">{{ $t("securityVerification") }}</h5>
+<div class="col-12">
+  <h5 class="section-title">{{ $t("securityVerification") }}</h5>
+  <div class="turnstile-section">
+    <div class="turnstile-container">
+      <div id="turnstile-widget" class="turnstile-widget"></div>
 
-                <div v-if="$isDevelopment" class="debug-info mb-2">
-                  <small class="text-muted">
-                    Script: {{ turnstileScriptLoaded ? 'Loaded' : 'Not loaded' }} |
-                    Widget: {{ turnstileLoaded ? 'Ready' : 'Not ready' }} |
-                    Token: {{ turnstileToken ? 'Present' : 'Missing' }}
-                  </small>
-                </div>
+      <div v-if="!turnstileLoaded && !turnstileError" class="alert alert-info mt-2">
+        <b-spinner small class="me-2"></b-spinner>
+        <span>{{ $t("loadingVerification") }}</span>
+      </div>
 
-                <div class="turnstile-container">
-                  <div id="turnstile-widget" class="turnstile-widget"></div>
+      <div v-else-if="turnstileError" class="alert alert-warning mt-2">
+        <div class="d-flex align-items-center justify-content-between">
+          <div>
+            <i class="fa fa-exclamation-triangle me-2"></i>
+            {{ turnstileError }}
+          </div>
+          <b-button
+            size="sm"
+            variant="outline-primary"
+            @click="reloadTurnstile"
+            :disabled="isSubmitting"
+          >
+            <i class="fa fa-refresh me-1"></i>
+            {{ $t("retry") }}
+          </b-button>
+        </div>
+      </div>
 
-                  <div v-if="!turnstileLoaded && !turnstileError" class="text-center">
-                    <b-spinner small class="me-2"></b-spinner>
-                    <span>{{ $t("loadingVerification") }}</span>
-                  </div>
-
-                  <div v-else-if="turnstileError" class="alert alert-warning">
-                    <div class="d-flex align-items-center justify-content-between">
-                      <div>
-                        <i class="fa fa-exclamation-triangle me-2"></i>
-                        {{ turnstileError }}
-                      </div>
-                      <b-button
-                        size="sm"
-                        variant="outline-primary"
-                        @click="reloadTurnstile"
-                        :disabled="isSubmitting"
-                      >
-                        <i class="fa fa-refresh me-1"></i>
-                        {{ $t("retry") }}
-                      </b-button>
-                    </div>
-                  </div>
-
-                  <div v-else-if="turnstileToken" class="alert alert-success">
-                    <i class="fa fa-check-circle me-2"></i>
-                    {{ $t("verificationComplete") }}
-                  </div>
-                </div>
-
-                <div class="mt-2">
-                  <small class="text-muted">
-                    {{ $t("turnstileHelpText") }}
-                  </small>
-                </div>
-              </div>
-            </div>
+      <div v-else-if="turnstileToken" class="alert alert-success mt-2">
+        <i class="fa fa-check-circle me-2"></i>
+        {{ $t("verificationComplete") }}
+      </div>
+    </div>
+  </div>
+</div>
 
             <div class="d-flex justify-content-end mt-4">
               <b-button
@@ -283,7 +270,7 @@ export default {
       turnstileError: null,
       turnstileRetryCount: 0,
       maxRetries: 3,
-      maxFileSize: 5 * 1024 * 1024, // 5MB limit for files
+      maxFileSize: 5 * 1024 * 1024,
       fallbackLogo:
         "https://api.int-mgm.org/images/settings/84ccf070-9a30-4559-b86c-3c6512c09764.png",
       turnstileSiteKey: "0x4AAAAAABgha0gsIlInCX7u",
@@ -362,7 +349,6 @@ export default {
           await this.initializeTurnstile();
           return;
         }
-        console.log("🔄 Loading Turnstile script...");
         const script = document.createElement("script");
         script.src =
           "https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit";
@@ -370,13 +356,11 @@ export default {
         script.defer = true;
         const loadPromise = new Promise((resolve, reject) => {
           script.onload = () => {
-            console.log("✅ Turnstile script loaded successfully");
             this.turnstileScriptLoaded = true;
             this.turnstileLoaded = true;
             resolve();
           };
           script.onerror = () => {
-            console.error("❌ Failed to load Turnstile script");
             this.turnstileError = this.$t("turnstileScriptFailed");
             this.toast.error(this.$t("turnstileScriptFailed"));
             reject(new Error("Failed to load Turnstile script"));
@@ -387,7 +371,6 @@ export default {
         await new Promise((resolve) => setTimeout(resolve, 100));
         await this.initializeTurnstile();
       } catch (error) {
-        console.error("❌ Error loading Turnstile:", error);
         this.turnstileError = this.$t("turnstileScriptFailed");
         this.toast.error(this.$t("turnstileScriptFailed"));
       }
@@ -403,7 +386,6 @@ export default {
           throw new Error("Turnstile container not found");
         }
         container.innerHTML = "";
-        console.log("🔄 Initializing Turnstile widget...");
         const siteKey = this.turnstileSiteKey.trim();
         if (!siteKey || siteKey.length < 10) {
           throw new Error("Invalid site key");
@@ -414,24 +396,20 @@ export default {
           size: "normal",
           language: this.getLanguageCode(),
           callback: (token) => {
-            console.log("✅ Turnstile token received:", token);
             this.turnstileToken = token;
             this.turnstileError = null;
             this.turnstileRetryCount = 0;
           },
           "error-callback": (errorCode) => {
-            console.error("❌ Turnstile error:", errorCode);
             this.handleTurnstileError(errorCode);
           },
           "expired-callback": () => {
-            console.log("⏰ Turnstile token expired");
             this.turnstileToken = null;
             this.turnstileError = this.$t("turnstileExpired");
             this.toast.error(this.$t("turnstileExpired"));
             this.resetTurnstile();
           },
           "timeout-callback": () => {
-            console.log("⏰ Turnstile timeout");
             this.turnstileToken = null;
             this.turnstileError = this.$t("turnstileTimeout");
             this.toast.error(this.$t("turnstileTimeout"));
@@ -441,9 +419,7 @@ export default {
         if (!this.turnstileWidgetId) {
           throw new Error("Failed to initialize Turnstile widget");
         }
-        console.log("✅ Turnstile initialized with ID:", this.turnstileWidgetId);
       } catch (error) {
-        console.error("❌ Error initializing Turnstile:", error);
         this.turnstileError = this.$t("turnstileInitFailed");
         this.toast.error(this.$t("turnstileInitFailed"));
       }
@@ -478,9 +454,6 @@ export default {
         this.turnstileRetryCount < this.maxRetries
       ) {
         this.turnstileRetryCount++;
-        console.log(
-          `🔄 Retrying after error ${errorCode} (${this.turnstileRetryCount}/${this.maxRetries})...`
-        );
         setTimeout(() => this.resetTurnstile(), 3000);
       }
     },
@@ -488,10 +461,9 @@ export default {
       if (window.turnstile && this.turnstileWidgetId) {
         try {
           window.turnstile.reset(this.turnstileWidgetId);
-          console.log("🔄 Turnstile widget reset");
+
           this.turnstileError = null;
         } catch (error) {
-          console.error("❌ Error resetting Turnstile:", error);
           this.reloadTurnstile();
         }
       }
@@ -508,13 +480,13 @@ export default {
       if (window.turnstile && this.turnstileWidgetId) {
         try {
           window.turnstile.remove(this.turnstileWidgetId);
-          console.log("🧹 Turnstile widget removed");
+
           const container = document.getElementById("turnstile-widget");
           if (container) {
             container.innerHTML = "";
           }
         } catch (error) {
-          console.error("❌ Error removing Turnstile widget:", error);
+          console.error("Error removing Turnstile widget:", error);
         }
         this.turnstileWidgetId = null;
       }
@@ -545,7 +517,9 @@ export default {
     onNationalCardFileChange(event) {
       const file = event.target.files[0];
       if (file) {
-        if (!["application/pdf", "image/jpeg", "image/png"].includes(file.type)) {
+        if (
+          !["application/pdf", "image/jpeg", "image/png"].includes(file.type)
+        ) {
           this.formErrors.nationalCardFile = this.$t("invalidFileExtension");
           this.form.nationalCardFile = null;
           event.target.value = "";
@@ -567,7 +541,9 @@ export default {
           "application/vnd.openxmlformats-officedocument.presentationml.presentation",
         ];
         if (!validTypes.includes(file.type)) {
-          this.formErrors.powerPointFile = this.$t("invalidPowerPointExtension");
+          this.formErrors.powerPointFile = this.$t(
+            "invalidPowerPointExtension"
+          );
           this.form.powerPointFile = null;
           event.target.value = "";
         } else if (file.size > this.maxFileSize) {
@@ -630,7 +606,6 @@ export default {
         this.isSubmitted = true;
         this.toast.success(this.$t("formSubmittedSuccessfully"));
       } catch (error) {
-        console.error("❌ Form submission error:", error);
         if (error.response?.status === 400) {
           this.toast.error(this.$t("invalidData"));
         } else if (error.response?.status === 401) {
@@ -650,7 +625,6 @@ export default {
       }
     },
     async submitFormData(authToken) {
-      console.log("🔄 Submitting form data...");
       const formData = new FormData();
       formData.append("FullName", this.form.fullName.trim());
       formData.append("Governorate", this.form.governorate);
@@ -660,14 +634,7 @@ export default {
       if (this.form.powerPointFile) {
         formData.append("PowerPoint", this.form.powerPointFile);
       }
-      formData.append(
-        this.$i18n.locale === "ar"
-          ? "ArNote"
-          : this.$i18n.locale === "en"
-          ? "EnNote"
-          : "PeNote",
-        this.form.note.trim()
-      );
+      formData.append("Note", this.form.note.trim());
       formData.append("ConferenceVersionID", this.form.conferenceVersionID);
       formData.append("CaptchaToken", this.turnstileToken);
       formData.append("ArFacilityFullName", "");
@@ -723,9 +690,13 @@ export default {
 
 .container {
   max-width: 1400px;
-  font-family: v-bind('$i18n.locale === "ar" || $i18n.locale === "fa" ? "Cairo" : "Roboto"'),
+  font-family: v-bind(
+      '$i18n.locale === "ar" || $i18n.locale === "fa" ? "Cairo" : "Roboto"'
+    ),
     sans-serif;
-  direction: v-bind('$i18n.locale === "ar" || $i18n.locale === "fa" ? "rtl" : "ltr"');
+  direction: v-bind(
+    '$i18n.locale === "ar" || $i18n.locale === "fa" ? "rtl" : "ltr"'
+  );
 }
 
 .conference-header {
@@ -853,8 +824,12 @@ export default {
 
 .terms-list {
   list-style-type: disc;
-  padding-left: v-bind('$i18n.locale === "ar" || $i18n.locale === "fa" ? "0" : "1.5rem"');
-  padding-right: v-bind('$i18n.locale === "ar" || $i18n.locale === "fa" ? "1.5rem" : "0"');
+  padding-left: v-bind(
+    '$i18n.locale === "ar" || $i18n.locale === "fa" ? "0" : "1.5rem"'
+  );
+  padding-right: v-bind(
+    '$i18n.locale === "ar" || $i18n.locale === "fa" ? "1.5rem" : "0"'
+  );
   margin-bottom: 1rem;
   color: #2c3e50;
 }
@@ -868,12 +843,67 @@ export default {
 .terms-checkbox {
   display: flex;
   align-items: center;
-  margin-top: 1rem;
+  margin-top: 1.5rem;
+  padding: 0.75rem;
+  background-color: #f8f9fa;
+  border: 1px solid #e9ecef;
+  border-radius: 8px;
+  transition: background-color 0.3s ease;
 }
 
-.terms-checkbox :deep(.custom-control-label) {
-  margin-left: v-bind('$i18n.locale === "ar" || $i18n.locale === "fa" ? "0.5rem" : "0"');
-  margin-right: v-bind('$i18n.locale === "ar" || $i18n.locale === "fa" ? "0" : "0.5rem"');
+.terms-checkbox:hover {
+  background-color: #e9f7ef;
+}
+
+.custom-checkbox :deep(.custom-control-input) {
+  width: 1.5rem;
+  height: 1.5rem;
+  cursor: pointer;
+  border: 2px solid #195015;
+  transition: all 0.3s ease;
+}
+
+.custom-checkbox :deep(.custom-control-input:checked) {
+  background-color: #195015;
+  border-color: #195015;
+}
+
+.custom-checkbox :deep(.custom-control-input:focus) {
+  box-shadow: 0 0 0 0.2rem rgba(25, 80, 21, 0.25);
+}
+
+.checkbox-label {
+  font-size: 1.1rem;
+  font-weight: 500;
+  color: #2c3e50;
+  margin-left: v-bind(
+    '$i18n.locale === "ar" || $i18n.locale === "fa" ? "0.75rem" : "0.5rem"'
+  );
+  margin-right: v-bind(
+    '$i18n.locale === "ar" || $i18n.locale === "fa" ? "0.5rem" : "0.75rem"'
+  );
+  cursor: pointer;
+}
+
+[dir="rtl"] .custom-checkbox :deep(.custom-control-label::before),
+[dir="rtl"] .custom-checkbox :deep(.custom-control-label::after) {
+  right: 0;
+  left: auto;
+}
+
+@media (max-width: 768px) {
+  .terms-checkbox {
+    padding: 0.5rem;
+  }
+
+  .custom-checkbox :deep(.custom-control-input) {
+    width: 1.25rem;
+    height: 1.25rem;
+  }
+
+  .checkbox-label {
+    font-size: 1rem;
+  }
 }
 
 .success-message {
@@ -897,7 +927,6 @@ textarea.form-control {
   resize: vertical;
   min-height: 100px;
 }
-
 .turnstile-section {
   margin-top: 1.5rem;
   padding: 1rem;
@@ -908,8 +937,9 @@ textarea.form-control {
 
 .turnstile-container {
   display: flex;
-  justify-content: center;
+  flex-direction: column; /* تغيير الاتجاه إلى عمودي */
   align-items: center;
+  justify-content: center;
   min-height: 80px;
   margin: 1rem 0;
   position: relative;
@@ -921,6 +951,7 @@ textarea.form-control {
   align-items: center;
   min-height: 65px;
   width: 100%;
+  margin-bottom: 0.5rem; /* إضافة هامش أسفل للفصل بين الويدجت والرسائل */
 }
 
 [dir="rtl"] .turnstile-container,
@@ -934,12 +965,57 @@ textarea.form-control {
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
 }
 
-.debug-info {
-  padding: 0.5rem;
-  background-color: #e9ecef;
-  border-radius: 4px;
-  font-family: monospace;
-  font-size: 0.8rem;
+.alert {
+  margin-top: 0.5rem;
+  margin-bottom: 0.5rem;
+  width: 100%; /* التأكد من أن التنبيهات تأخذ العرض الكامل */
+  text-align: center; /* محاذاة النص في المنتصف */
+}
+
+.alert-info {
+  background-color: #d1ecf1;
+  border-color: #bee5eb;
+  color: #0c5460;
+}
+
+.alert-warning {
+  background-color: #fff3cd;
+  border-color: #ffeaa7;
+  color: #856404;
+}
+
+.alert-success {
+  background-color: #d4edda;
+  border-color: #c3e6cb;
+  color: #155724;
+}
+
+.me-2 {
+  margin-right: 0.5rem !important;
+}
+
+.me-1 {
+  margin-right: 0.25rem !important;
+}
+
+[dir="rtl"] .me-2 {
+  margin-right: 0 !important;
+  margin-left: 0.5rem !important;
+}
+
+[dir="rtl"] .me-1 {
+  margin-right: 0 !important;
+  margin-left: 0.25rem !important;
+}
+
+@media (max-width: 768px) {
+  .turnstile-container {
+    min-height: 70px;
+  }
+
+  .turnstile-section {
+    padding: 0.75rem;
+  }
 }
 
 .alert {
