@@ -77,9 +77,9 @@
                   @input="validateFullName"
                   :state="formErrors.fullName ? false : null"
                 ></b-form-input>
-                <b-form-invalid-feedback v-if="formErrors.fullName">{{
-                  formErrors.fullName
-                }}</b-form-invalid-feedback>
+                <b-form-invalid-feedback v-if="formErrors.fullName">
+                  {{ formErrors.fullName }}
+                </b-form-invalid-feedback>
               </b-form-group>
 
               <b-form-group
@@ -158,6 +158,37 @@
                 ></b-form-textarea>
               </b-form-group>
 
+              <!-- Cloudflare Turnstile Section -->
+              <div class="col-12">
+                <h5 class="section-title">{{ $t("securityVerification") || "التحقق الأمني" }}</h5>
+                <div class="turnstile-section">
+                  <p class="text-muted mb-3">{{ $t("pleaseCompleteVerification") || "يرجى إكمال التحقق الأمني أدناه" }}</p>
+                  <div class="turnstile-container">
+                    <div 
+                      ref="turnstileWidget" 
+                      class="turnstile-widget"
+                      :data-sitekey="turnstileSiteKey"
+                      :data-callback="'onTurnstileCallback'"
+                      :data-error-callback="'onTurnstileError'"
+                      :data-expired-callback="'onTurnstileExpired'"
+                      :data-theme="'light'"
+                      :data-language="$i18n.locale"
+                    ></div>
+                  </div>
+                  <div v-if="formErrors.turnstileToken" class="invalid-feedback d-block">
+                    {{ formErrors.turnstileToken }}
+                  </div>
+                  <div v-if="turnstileStatus === 'verified'" class="alert alert-success mt-2">
+                    <i class="fa fa-check-circle me-1"></i>
+                    {{ $t("verificationCompleted") || "تم التحقق بنجاح" }}
+                  </div>
+                  <div v-if="turnstileStatus === 'error'" class="alert alert-warning mt-2">
+                    <i class="fa fa-exclamation-triangle me-1"></i>
+                    {{ $t("verificationError") || "حدث خطأ في التحقق، يرجى المحاولة مرة أخرى" }}
+                  </div>
+                </div>
+              </div>
+
               <div class="col-12">
                 <h5 class="section-title">{{ $t("termsAndConditions") }}</h5>
                 <ul class="terms-list">
@@ -179,64 +210,12 @@
                 </div>
               </div>
 
-              <div class="col-12">
-                <div class="turnstile-section">
-                  <h5 class="section-title">{{ $t("securityVerification") }}</h5>
-
-                  <div v-if="$isDevelopment" class="debug-info mb-2">
-                    <small class="text-muted">
-                      Script: {{ turnstileScriptLoaded ? 'Loaded' : 'Not loaded' }} |
-                      Widget: {{ turnstileLoaded ? 'Ready' : 'Not ready' }} |
-                      Token: {{ turnstileToken ? 'Present' : 'Missing' }}
-                    </small>
-                  </div>
-
-                  <div class="turnstile-container">
-                    <div id="turnstile-widget" class="turnstile-widget"></div>
-
-                    <div v-if="!turnstileLoaded && !turnstileError" class="text-center">
-                      <b-spinner small class="me-2"></b-spinner>
-                      <span>{{ $t("loadingVerification") }}</span>
-                    </div>
-
-                    <div v-else-if="turnstileError" class="alert alert-warning">
-                      <div class="d-flex align-items-center justify-content-between">
-                        <div>
-                          <i class="fa fa-exclamation-triangle me-2"></i>
-                          {{ turnstileError }}
-                        </div>
-                        <b-button
-                          size="sm"
-                          variant="outline-primary"
-                          @click="handleReloadTurnstile"
-                          :disabled="isSubmitting"
-                        >
-                          <i class="fa fa-refresh me-1"></i>
-                          {{ $t("retry") }}
-                        </b-button>
-                      </div>
-                    </div>
-
-                    <div v-else-if="turnstileToken" class="alert alert-success">
-                      <i class="fa fa-check-circle me-2"></i>
-                      {{ $t("verificationComplete") }}
-                    </div>
-                  </div>
-
-                  <div class="mt-2">
-                    <small class="text-muted">
-                      {{ $t("turnstileHelpText") }}
-                    </small>
-                  </div>
-                </div>
-              </div>
-
               <div class="d-flex justify-content-end mt-4">
                 <b-button
                   type="submit"
                   variant="primary"
                   size="lg"
-                  :disabled="!isFormValid || isSubmitting || !turnstileToken"
+                  :disabled="!isFormValid || isSubmitting"
                   class="submit-btn"
                 >
                   <b-spinner small v-if="isSubmitting" class="mr-2"></b-spinner>
@@ -299,6 +278,7 @@ export default {
   },
   data() {
     return {
+      cloudflairtoken: null,
       form: {
         fullName: "",
         Country: "",
@@ -318,15 +298,13 @@ export default {
         ...countries.countries,
       ],
       termsList: [],
-      turnstileSiteKey: "0x4AAAAAABgha0gsIlInCX7u",
-      turnstileScriptLoaded: false,
-      turnstileToken: null,
-      turnstileWidgetId: null,
-      turnstileLoaded: false,
-      turnstileError: null,
-      turnstileRetryCount: 0,
-      maxRetries: 3,
       maxFileSize: 5 * 1024 * 1024,
+      
+      // Cloudflare Turnstile
+      turnstileSiteKey: "0x4AAAAAABgha0gsIlInCX7u",
+      turnstileToken: null,
+      turnstileStatus: null, // null, 'loading', 'verified', 'error', 'expired'
+      turnstileLoaded: false,
     };
   },
   computed: {
@@ -337,7 +315,7 @@ export default {
         this.form.ThePassport &&
         this.form.PowerPoint &&
         this.form.termsAgreed &&
-        this.turnstileToken
+        this.turnstileToken // إضافة التحقق من توكين Turnstile
       );
     },
   },
@@ -346,211 +324,126 @@ export default {
       handler(newLocale) {
         this.updateTermsList(newLocale);
         this.updateDirection();
-        this.handleReloadTurnstile();
+        this.reloadTurnstile(); // إعادة تحميل Turnstile عند تغيير اللغة
       },
       immediate: true,
     },
   },
   mounted() {
-    this.initializeComponent();
-  },
-  beforeUnmount() {
-    this.cleanupTurnstile();
+    this.updateDirection();
+    this.loadTurnstileScript();
   },
   methods: {
-    async initializeComponent() {
-      this.updateDirection();
-      await this.loadTurnstileScript();
-    },
-    async loadTurnstileScript() {
-      try {
-        if (window.turnstile) {
-          this.turnstileScriptLoaded = true;
-          this.turnstileLoaded = true;
-          await this.initializeTurnstile();
-          return;
-        }
-
-        console.log("Loading Turnstile script...");
-        const script = document.createElement("script");
-        script.src = "https://challenges.cloudflare.com/turnstile/v0/api.js";
-        script.async = true;
-        script.defer = true;
-
-        const loadTimeout = setTimeout(() => {
-          console.error("Turnstile script load timeout");
-          this.turnstileError = this.$t("turnstileScriptFailed");
-          this.toast.error(this.$t("turnstileScriptFailed"));
-        }, 10000);
-
-        script.onload = () => {
-          clearTimeout(loadTimeout);
-          console.log("Turnstile script loaded successfully");
-          this.turnstileScriptLoaded = true;
-          this.turnstileLoaded = true;
-          setTimeout(() => this.initializeTurnstile(), 100);
-        };
-
-        script.onerror = () => {
-          clearTimeout(loadTimeout);
-          console.error("Failed to load Turnstile script");
-          this.turnstileError = this.$t("turnstileScriptFailed");
-          this.toast.error(this.$t("turnstileScriptFailed"));
-        };
-
-        document.head.appendChild(script);
-      } catch (error) {
-        console.error("Error loading Turnstile:", error);
-        this.turnstileError = this.$t("turnstileScriptFailed");
-        this.toast.error(this.$t("turnstileScriptFailed"));
+    // إضافة سكريبت Cloudflare Turnstile
+    loadTurnstileScript() {
+      if (window.turnstile) {
+        this.initializeTurnstile();
+        return;
       }
-    },
-    async initializeTurnstile() {
-      try {
-        if (!window.turnstile) {
-          throw new Error("Turnstile not available");
-        }
 
-        this.cleanupTurnstile();
-        const container = document.getElementById("turnstile-widget");
-        if (!container) {
-          throw new Error("Turnstile container not found");
-        }
-
-        container.innerHTML = "";
-        console.log("Initializing Turnstile widget...");
-
-        const siteKey = this.turnstileSiteKey.trim();
-        if (!siteKey || siteKey.length < 10) {
-          throw new Error("Invalid site key");
-        }
-
-        this.turnstileWidgetId = window.turnstile.render("#turnstile-widget", {
-          sitekey: siteKey,
-          theme: "auto",
-          size: "normal",
-          language: this.getLanguageCode(),
-          callback: (token) => {
-            console.log("Turnstile token received:", token);
-            this.turnstileToken = token;
-            this.turnstileError = null;
-            this.turnstileRetryCount = 0;
-          },
-          "error-callback": (errorCode) => {
-            console.error("Turnstile error:", errorCode);
-            this.handleTurnstileError(errorCode);
-          },
-          "expired-callback": () => {
-            console.log("Turnstile token expired");
-            this.turnstileToken = null;
-            this.turnstileError = this.$t("turnstileExpired");
-            this.toast.error(this.$t("turnstileExpired"));
-            this.resetTurnstile();
-          },
-          "timeout-callback": () => {
-            console.log("Turnstile timeout");
-            this.turnstileToken = null;
-            this.turnstileError = this.$t("timeoutError");
-            this.toast.error(this.$t("timeoutError"));
-            this.resetTurnstile();
-          },
-          "unsupported-callback": () => {
-            console.error("Turnstile unsupported");
-            this.turnstileError = this.$t("turnstileUnsupported");
-            this.toast.error(this.$t("turnstileUnsupported"));
-          },
-        });
-
-        if (!this.turnstileWidgetId) {
-          throw new Error("Failed to initialize Turnstile widget");
-        }
-
-        console.log("Turnstile initialized with ID:", this.turnstileWidgetId);
-      } catch (error) {
-        console.error("Error initializing Turnstile:", error);
-        this.turnstileError = this.$t("turnstileInitFailed");
-        this.toast.error(this.$t("turnstileInitFailed"));
-
-        if (this.turnstileRetryCount < this.maxRetries) {
-          this.turnstileRetryCount++;
-          console.log(`Retrying Turnstile initialization (${this.turnstileRetryCount}/${this.maxRetries})...`);
-          setTimeout(() => this.initializeTurnstile(), 2000);
-        }
-      }
-    },
-    handleTurnstileError(errorCode) {
-      this.turnstileToken = null;
-
-      const errorMessages = {
-        110100: this.$t("turnstileDomainError"),
-        110200: this.$t("turnstileSiteKeyError"),
-        110420: this.$t("turnstileActionError"),
-        300010: this.$t("turnstileNetworkError"),
-        300020: this.$t("turnstileGenericError"),
-        300030: this.$t("turnstileTimeoutError"),
-        600010: this.$t("turnstileInternalError"),
-        600020: this.$t("turnstileInternalError"),
-        600030: this.$t("turnstileInternalError"),
+      const script = document.createElement('script');
+      script.src = 'https://challenges.cloudflare.com/turnstile/v0/api.js';
+      script.async = true;
+      script.defer = true;
+      
+      script.onload = () => {
+        this.turnstileLoaded = true;
+        this.initializeTurnstile();
+      };
+      
+      script.onerror = () => {
+        console.error('Failed to load Turnstile script');
+        this.turnstileStatus = 'error';
       };
 
-      const message = errorMessages[errorCode] || this.$t("turnstileUnknownError", { code: errorCode });
-      this.turnstileError = message;
-      this.toast.error(message);
+      document.head.appendChild(script);
 
-      console.error("Turnstile Error Details:", {
-        errorCode,
-        message,
-        siteKey: this.turnstileSiteKey,
-        language: this.getLanguageCode(),
-      });
+      // إعداد الكولباك العامة
+      window.onTurnstileCallback = (token) => {
+        this.onTurnstileSuccess(token);
+      };
 
-      const retryableErrors = [300010, 300020, 300030, 600010, 600020];
-      if (retryableErrors.includes(errorCode) && this.turnstileRetryCount < this.maxRetries) {
-        this.turnstileRetryCount++;
-        console.log(`Retrying after error ${errorCode} (${this.turnstileRetryCount}/${this.maxRetries})...`);
-        setTimeout(() => this.resetTurnstile(), 3000);
+      window.onTurnstileError = () => {
+        this.onTurnstileError();
+      };
+
+      window.onTurnstileExpired = () => {
+        this.onTurnstileExpired();
+      };
+    },
+
+    // تشغيل Turnstile
+    initializeTurnstile() {
+      if (!window.turnstile || !this.$refs.turnstileWidget) return;
+
+      this.turnstileStatus = 'loading';
+      
+      try {
+        window.turnstile.render(this.$refs.turnstileWidget, {
+          sitekey: this.turnstileSiteKey,
+          callback: window.onTurnstileCallback,
+          'error-callback': window.onTurnstileError,
+          'expired-callback': window.onTurnstileExpired,
+          theme: 'light',
+          language: this.$i18n.locale,
+        });
+      } catch (error) {
+        console.error('Turnstile initialization error:', error);
+        this.turnstileStatus = 'error';
       }
     },
-    resetTurnstile() {
-      if (window.turnstile && this.turnstileWidgetId) {
-        try {
-          window.turnstile.reset(this.turnstileWidgetId);
-          console.log("Turnstile widget reset");
-          this.turnstileError = null;
-        } catch (error) {
-          console.error("Error resetting Turnstile:", error);
-          this.handleReloadTurnstile();
-        }
+
+    // إعادة تحميل Turnstile
+    reloadTurnstile() {
+      if (!window.turnstile || !this.$refs.turnstileWidget) return;
+      
+      try {
+        // إزالة الويدجت الحالي
+        window.turnstile.remove(this.$refs.turnstileWidget);
+        this.turnstileToken = null;
+        this.turnstileStatus = null;
+        
+        // إعادة التشغيل بعد تأخير قصير
+        setTimeout(() => {
+          this.initializeTurnstile();
+        }, 100);
+      } catch (error) {
+        console.error('Turnstile reload error:', error);
       }
     },
-    async handleReloadTurnstile() {
-      this.cleanupTurnstile();
+
+    // نجح التحقق
+    onTurnstileSuccess(token) {
+      this.turnstileToken = token;
+      this.turnstileStatus = 'verified';
+      this.formErrors.turnstileToken = '';
+      this.cloudflairtoken = token;
+      // طباعة التوكين في الكونسول
+      console.log('Cloudflare Turnstile Token:', token);
+      
+      this.toast.success(this.$t("verificationCompleted") || "تم التحقق بنجاح");
+    },
+
+    // خطأ في التحقق
+    onTurnstileError() {
       this.turnstileToken = null;
-      this.turnstileError = null;
-      this.turnstileRetryCount = 0;
-      await new Promise((resolve) => setTimeout(resolve, 500));
-      await this.initializeTurnstile();
+      this.turnstileStatus = 'error';
+      this.formErrors.turnstileToken = this.$t("verificationError") || "حدث خطأ في التحقق";
+      
+      console.error('Turnstile verification failed');
+      this.toast.error(this.$t("verificationError") || "حدث خطأ في التحقق");
     },
-    cleanupTurnstile() {
-      if (window.turnstile && this.turnstileWidgetId) {
-        try {
-          window.turnstile.remove(this.turnstileWidgetId);
-          console.log("Turnstile widget removed");
-        } catch (error) {
-          console.error("Error removing Turnstile widget:", error);
-          const container = document.getElementById("turnstile-widget");
-          if (container) {
-            container.innerHTML = "";
-          }
-        }
-        this.turnstileWidgetId = null;
-      }
+
+    // انتهت صلاحية التحقق
+    onTurnstileExpired() {
       this.turnstileToken = null;
+      this.turnstileStatus = 'expired';
+      this.formErrors.turnstileToken = this.$t("verificationExpired") || "انتهت صلاحية التحقق";
+      
+      console.warn('Turnstile token expired');
+      this.toast.warning(this.$t("verificationExpired") || "انتهت صلاحية التحقق، يرجى المحاولة مرة أخرى");
     },
-    getLanguageCode() {
-      const languageMap = { ar: "ar", en: "en", fa: "fa" };
-      return languageMap[this.$i18n.locale] || "en";
-    },
+
     updateDirection() {
       const isRTL = ["ar", "fa"].includes(this.$i18n.locale);
       document.documentElement.dir = isRTL ? "rtl" : "ltr";
@@ -642,13 +535,9 @@ export default {
         isValid = false;
       }
 
+      // التحقق من Turnstile
       if (!this.turnstileToken) {
-        this.turnstileError = this.$t("turnstileRequired");
-        console.error("Turnstile validation failed:", {
-          token: this.turnstileToken,
-          widgetId: this.turnstileWidgetId,
-          loaded: this.turnstileLoaded,
-        });
+        this.formErrors.turnstileToken = this.$t("verificationRequired") || "التحقق الأمني مطلوب";
         isValid = false;
       }
 
@@ -677,27 +566,22 @@ export default {
           this.toast.error(this.$t("authTokenExpired"));
         } else if (error.code === "ERR_NETWORK") {
           this.toast.error(this.$t("networkError"));
-          if (this.turnstileRetryCount < this.maxRetries) {
-            this.turnstileRetryCount++;
-            setTimeout(() => this.submitForm(), 1000);
-          }
         } else {
           this.toast.error(this.$t("errorOccurred"));
         }
-        this.resetTurnstile();
       } finally {
         this.isSubmitting = false;
       }
     },
     async submitFormData(authToken) {
-      console.log("Submitting form data...");
       const formData = new FormData();
       formData.append("FullName", this.form.fullName.trim());
       formData.append("Country", this.form.Country);
       formData.append("ThePassport", this.form.ThePassport);
       formData.append("PowerPoint", this.form.PowerPoint);
       formData.append("ConferenceVersionID", this.form.ConferenceVersionID);
-      formData.append("CaptchaToken", this.turnstileToken);
+      
+      // إضافة توكين Turnstile
 
       const noteField =
         this.$i18n.locale === "ar"
@@ -722,6 +606,7 @@ export default {
       Object.entries(additionalFields).forEach(([key, value]) => {
         formData.append(key, value);
       });
+      formData.append("CaptchaToken", this.cloudflairtoken);
 
       try {
         const response = await axios.post(
@@ -755,11 +640,15 @@ export default {
       };
       this.formErrors = {};
       this.isSubmitted = false;
-      this.turnstileError = null;
+      this.turnstileToken = null;
+      this.turnstileStatus = null;
+      
       document.querySelectorAll('input[type="file"]').forEach((input) => {
         input.value = "";
       });
-      this.resetTurnstile();
+      
+      // إعادة تحميل Turnstile
+      this.reloadTurnstile();
     },
   },
 };
@@ -953,6 +842,7 @@ textarea.form-control {
   min-height: 100px;
 }
 
+// Turnstile Styles
 .turnstile-section {
   margin-top: 1.5rem;
   padding: 1rem;
@@ -978,6 +868,7 @@ textarea.form-control {
   width: 100%;
 }
 
+// تأكد من أن اتجاه Turnstile يبقى LTR حتى في الواجهات RTL
 [dir="rtl"] .turnstile-container,
 [dir="rtl"] .turnstile-widget {
   direction: ltr;
@@ -987,14 +878,6 @@ textarea.form-control {
   border: none !important;
   border-radius: 4px;
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-}
-
-.debug-info {
-  padding: 0.5rem;
-  background-color: #e9ecef;
-  border-radius: 4px;
-  font-family: monospace;
-  font-size: 0.8rem;
 }
 
 .alert {
@@ -1012,17 +895,6 @@ textarea.form-control {
   background-color: #d4edda;
   border-color: #c3e6cb;
   color: #155724;
-}
-
-.btn-outline-primary {
-  border-color: #195015;
-  color: #195015;
-}
-
-.btn-outline-primary:hover {
-  background-color: #195015;
-  border-color: #195015;
-  color: white;
 }
 
 .me-2 {
@@ -1080,11 +952,6 @@ textarea.form-control {
 
   .turnstile-section {
     padding: 0.75rem;
-  }
-
-  .debug-info {
-    font-size: 0.7rem;
-    padding: 0.25rem;
   }
 }
 </style>
